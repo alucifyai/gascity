@@ -85,6 +85,9 @@ RUN go mod download
 # Install golangci-lint (required by make check)
 RUN make install-tools
 
+# Install Docker Buildx plugin (required by make check-all)
+RUN make install-buildx
+
 # Build the gc binary
 RUN make build
 
