@@ -83,8 +83,8 @@ func TestTutorial01_StartIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second gc start failed: %v\noutput: %s", err, out)
 	}
-	if !strings.Contains(out, "City started.") {
-		t.Errorf("expected 'City started.' in output, got: %s", out)
+	if !strings.Contains(out, "City started") {
+		t.Errorf("expected 'City started' in output, got: %s", out)
 	}
 
 	mayorSession := guard.SessionName("mayor")
