@@ -1,8 +1,10 @@
 .git
 .github
 .claude
-docs
-test
 *.md
 !contrib/**
+!docs/**
+!README.md
+!CONTRIBUTING.md
+!TESTING.md
 coverage.txt

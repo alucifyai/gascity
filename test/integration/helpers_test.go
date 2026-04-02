@@ -57,6 +57,12 @@ func setupCity(t *testing.T, guard *tmuxtest.Guard, agents []agentConfig) string
 	if err != nil {
 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
 	}
+	// gc init auto-starts a default tutorial city via supervisor.
+	// Stop it before overwriting city.toml with test config.
+	out, err = gc("", "stop", cityDir)
+	if err != nil {
+		t.Fatalf("gc stop after init failed: %v\noutput: %s", err, out)
+	}
 
 	// Overwrite city.toml with our agent config.
 	writeAgentsToml(t, cityDir, cityName, agents)
@@ -98,9 +104,9 @@ func setupRunningCity(t *testing.T, guard *tmuxtest.Guard) string {
 // writeAgentsToml writes a city.toml with the given agents.
 func writeAgentsToml(t *testing.T, cityDir, cityName string, agents []agentConfig) {
 	t.Helper()
-	content := "[workspace]\nname = " + quote(cityName) + "\n"
+	content := "[workspace]\nname = " + quote(cityName) + "\n\n[beads]\nprovider = \"file\"\n"
 	for _, a := range agents {
-		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\n",
+		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\nprompt_mode = \"none\"\n",
 			quote(a.Name), quote(a.StartCommand))
 	}
 	tomlPath := filepath.Join(cityDir, "city.toml")

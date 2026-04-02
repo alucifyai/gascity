@@ -47,10 +47,16 @@ func setupGasTownCity(t *testing.T, guard *tmuxtest.Guard, agents []gasTownAgent
 
 	cityDir := filepath.Join(t.TempDir(), cityName)
 
-	// gc init
-	out, err := gc("", "init", cityDir)
+	// gc init — skip provider readiness (CI/Docker has no provider CLIs).
+	out, err := gc("", "init", "--skip-provider-readiness", cityDir)
 	if err != nil {
 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
+	}
+	// gc init auto-starts a default tutorial city via supervisor.
+	// Stop it before overwriting city.toml with test config.
+	out, err = gc("", "stop", cityDir)
+	if err != nil {
+		t.Fatalf("gc stop after init failed: %v\noutput: %s", err, out)
 	}
 
 	// Initialize bd so that beads commands work (gc mail, bd create, etc.).
@@ -86,11 +92,12 @@ func writeGasTownToml(t *testing.T, cityDir, cityName string, agents []gasTownAg
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "[workspace]\nname = %s\n", quote(cityName))
+	fmt.Fprintf(&b, "\n[beads]\nprovider = \"file\"\n")
 	fmt.Fprintf(&b, "\n[daemon]\npatrol_interval = \"100ms\"\n")
 
 	for _, a := range agents {
 		fmt.Fprintf(&b, "\n[[agent]]\nname = %s\n", quote(a.Name))
-		fmt.Fprintf(&b, "start_command = %s\n", quote(a.StartCommand))
+		fmt.Fprintf(&b, "start_command = %s\nprompt_mode = \"none\"\n", quote(a.StartCommand))
 		if a.Dir != "" {
 			fmt.Fprintf(&b, "dir = %s\n", quote(a.Dir))
 		}

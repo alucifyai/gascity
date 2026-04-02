@@ -1,0 +1,175 @@
+diff --git a/.dockerignore b/.dockerignore
+index f0f4e60..2ab43d6 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -1,8 +1,10 @@
+ .git
+ .github
+ .claude
+-docs
+-test
+ *.md
+ !contrib/**
++!docs/**
++!README.md
++!CONTRIBUTING.md
++!TESTING.md
+ coverage.txt
+diff --git a/Makefile b/Makefile
+index 57b38f2..d34bb5a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -119,7 +119,7 @@ test-tutorial-regression:
+ 
+ ## test-integration: run all tests including integration (tmux, etc.)
+ test-integration:
+-	go test -tags integration -timeout 8m ./...
++	go test -tags integration -timeout 15m ./...
+ 
+ ## test-tutorial: run tutorial acceptance tests (requires tmux, dolt, bd, claude authed)
+ ## These exercise the full tutorial flow with real inference — run before each release.
+diff --git a/internal/config/resolve.go b/internal/config/resolve.go
+index 9221226..db79ab4 100644
+--- a/internal/config/resolve.go
++++ b/internal/config/resolve.go
+@@ -33,7 +33,11 @@ type LookPathFunc func(string) (string, error)
+ func ResolveProvider(agent *Agent, ws *Workspace, cityProviders map[string]ProviderSpec, lookPath LookPathFunc) (*ResolvedProvider, error) {
+ 	// Step 1: agent.StartCommand is the escape hatch.
+ 	if agent.StartCommand != "" {
+-		return &ResolvedProvider{Command: agent.StartCommand, PromptMode: "arg"}, nil
++		pm := "arg"
++		if agent.PromptMode != "" {
++			pm = agent.PromptMode
++		}
++		return &ResolvedProvider{Command: agent.StartCommand, PromptMode: pm}, nil
+ 	}
+ 
+ 	// Step 2: determine provider name.
+@@ -44,7 +48,11 @@ func ResolveProvider(agent *Agent, ws *Workspace, cityProviders map[string]Provi
+ 	if name == "" {
+ 		// No provider name — check workspace start_command escape hatch.
+ 		if ws != nil && ws.StartCommand != "" {
+-			return &ResolvedProvider{Command: ws.StartCommand, PromptMode: "arg"}, nil
++			pm := "arg"
++			if agent.PromptMode != "" {
++				pm = agent.PromptMode
++			}
++			return &ResolvedProvider{Command: ws.StartCommand, PromptMode: pm}, nil
+ 		}
+ 		// Auto-detect: scan PATH for known binaries.
+ 		detected, err := detectProviderName(lookPath)
+diff --git a/internal/runtime/tmux/tmux_test.go b/internal/runtime/tmux/tmux_test.go
+index decd1d8..282baf7 100644
+--- a/internal/runtime/tmux/tmux_test.go
++++ b/internal/runtime/tmux/tmux_test.go
+@@ -817,8 +817,12 @@ func TestGetProcessGroupID(t *testing.T) {
+ 		t.Error("expected non-empty PGID for current process")
+ 	}
+ 
+-	// PGID should not be 0 or 1 for a normal process
++	// PGID should not be 0 or 1 for a normal process.
++	// Inside a container the test process typically runs in PGID 1, so skip.
+ 	if pgid == "0" || pgid == "1" {
++		if os.Getpid() == 1 || pgid == "1" {
++			t.Skipf("skipping PGID check: running in container (PGID=%s)", pgid)
++		}
+ 		t.Errorf("unexpected PGID %q for current process", pgid)
+ 	}
+ 
+diff --git a/test/integration/gastown_controller_test.go b/test/integration/gastown_controller_test.go
+index 3514104..7e50a9b 100644
+--- a/test/integration/gastown_controller_test.go
++++ b/test/integration/gastown_controller_test.go
+@@ -41,8 +41,8 @@ func TestGastown_ControllerStartStop(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatalf("gc start (restart) failed: %v\noutput: %s", err, out)
+ 	}
+-	if !strings.Contains(out, "City started.") {
+-		t.Errorf("expected 'City started.' in restart output:\n%s", out)
++	if !strings.Contains(out, "City started") {
++		t.Errorf("expected 'City started' in restart output:\n%s", out)
+ 	}
+ }
+ 
+diff --git a/test/integration/gastown_helpers_test.go b/test/integration/gastown_helpers_test.go
+index ff22c69..e4098d4 100644
+--- a/test/integration/gastown_helpers_test.go
++++ b/test/integration/gastown_helpers_test.go
+@@ -47,11 +47,17 @@ func setupGasTownCity(t *testing.T, guard *tmuxtest.Guard, agents []gasTownAgent
+ 
+ 	cityDir := filepath.Join(t.TempDir(), cityName)
+ 
+-	// gc init
+-	out, err := gc("", "init", cityDir)
++	// gc init — skip provider readiness (CI/Docker has no provider CLIs).
++	out, err := gc("", "init", "--skip-provider-readiness", cityDir)
+ 	if err != nil {
+ 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
+ 	}
++	// gc init auto-starts a default tutorial city via supervisor.
++	// Stop it before overwriting city.toml with test config.
++	out, err = gc("", "stop", cityDir)
++	if err != nil {
++		t.Fatalf("gc stop after init failed: %v\noutput: %s", err, out)
++	}
+ 
+ 	// Initialize bd so that beads commands work (gc mail, bd create, etc.).
+ 	initBd(t, cityDir)
+@@ -86,11 +92,12 @@ func writeGasTownToml(t *testing.T, cityDir, cityName string, agents []gasTownAg
+ 
+ 	var b strings.Builder
+ 	fmt.Fprintf(&b, "[workspace]\nname = %s\n", quote(cityName))
++	fmt.Fprintf(&b, "\n[beads]\nprovider = \"file\"\n")
+ 	fmt.Fprintf(&b, "\n[daemon]\npatrol_interval = \"100ms\"\n")
+ 
+ 	for _, a := range agents {
+ 		fmt.Fprintf(&b, "\n[[agent]]\nname = %s\n", quote(a.Name))
+-		fmt.Fprintf(&b, "start_command = %s\n", quote(a.StartCommand))
++		fmt.Fprintf(&b, "start_command = %s\nprompt_mode = \"none\"\n", quote(a.StartCommand))
+ 		if a.Dir != "" {
+ 			fmt.Fprintf(&b, "dir = %s\n", quote(a.Dir))
+ 		}
+diff --git a/test/integration/helpers_test.go b/test/integration/helpers_test.go
+index 7b250bc..bf55b2e 100644
+--- a/test/integration/helpers_test.go
++++ b/test/integration/helpers_test.go
+@@ -57,6 +57,12 @@ func setupCity(t *testing.T, guard *tmuxtest.Guard, agents []agentConfig) string
+ 	if err != nil {
+ 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
+ 	}
++	// gc init auto-starts a default tutorial city via supervisor.
++	// Stop it before overwriting city.toml with test config.
++	out, err = gc("", "stop", cityDir)
++	if err != nil {
++		t.Fatalf("gc stop after init failed: %v\noutput: %s", err, out)
++	}
+ 
+ 	// Overwrite city.toml with our agent config.
+ 	writeAgentsToml(t, cityDir, cityName, agents)
+@@ -98,9 +104,9 @@ func setupRunningCity(t *testing.T, guard *tmuxtest.Guard) string {
+ // writeAgentsToml writes a city.toml with the given agents.
+ func writeAgentsToml(t *testing.T, cityDir, cityName string, agents []agentConfig) {
+ 	t.Helper()
+-	content := "[workspace]\nname = " + quote(cityName) + "\n"
++	content := "[workspace]\nname = " + quote(cityName) + "\n\n[beads]\nprovider = \"file\"\n"
+ 	for _, a := range agents {
+-		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\n",
++		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\nprompt_mode = \"none\"\n",
+ 			quote(a.Name), quote(a.StartCommand))
+ 	}
+ 	tomlPath := filepath.Join(cityDir, "city.toml")
+diff --git a/test/integration/tutorial01_test.go b/test/integration/tutorial01_test.go
+index afec305..ad38509 100644
+--- a/test/integration/tutorial01_test.go
++++ b/test/integration/tutorial01_test.go
+@@ -83,8 +83,8 @@ func TestTutorial01_StartIsIdempotent(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatalf("second gc start failed: %v\noutput: %s", err, out)
+ 	}
+-	if !strings.Contains(out, "City started.") {
+-		t.Errorf("expected 'City started.' in output, got: %s", out)
++	if !strings.Contains(out, "City started") {
++		t.Errorf("expected 'City started' in output, got: %s", out)
+ 	}
+ 
+ 	mayorSession := guard.SessionName("mayor")

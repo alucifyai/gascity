@@ -33,7 +33,11 @@ type LookPathFunc func(string) (string, error)
 func ResolveProvider(agent *Agent, ws *Workspace, cityProviders map[string]ProviderSpec, lookPath LookPathFunc) (*ResolvedProvider, error) {
 	// Step 1: agent.StartCommand is the escape hatch.
 	if agent.StartCommand != "" {
-		return &ResolvedProvider{Command: agent.StartCommand, PromptMode: "arg"}, nil
+		pm := "arg"
+		if agent.PromptMode != "" {
+			pm = agent.PromptMode
+		}
+		return &ResolvedProvider{Command: agent.StartCommand, PromptMode: pm}, nil
 	}
 
 	// Step 2: determine provider name.
@@ -44,7 +48,11 @@ func ResolveProvider(agent *Agent, ws *Workspace, cityProviders map[string]Provi
 	if name == "" {
 		// No provider name — check workspace start_command escape hatch.
 		if ws != nil && ws.StartCommand != "" {
-			return &ResolvedProvider{Command: ws.StartCommand, PromptMode: "arg"}, nil
+			pm := "arg"
+			if agent.PromptMode != "" {
+				pm = agent.PromptMode
+			}
+			return &ResolvedProvider{Command: ws.StartCommand, PromptMode: pm}, nil
 		}
 		// Auto-detect: scan PATH for known binaries.
 		detected, err := detectProviderName(lookPath)
