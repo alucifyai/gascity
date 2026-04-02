@@ -171,6 +171,7 @@ func integrationEnv() []string {
 	env = filterEnv(env, "GC_HOME")
 	env = filterEnv(env, "XDG_RUNTIME_DIR")
 	env = append(env, "GC_DOLT=skip")
+	env = append(env, "GC_BEADS=file") // Use in-process file store; bd CLI needs .beads/ which GC_DOLT=skip never creates.
 	env = append(env, "GC_HOME="+testGCHome)
 	env = append(env, "XDG_RUNTIME_DIR="+testRuntimeDir)
 	env = append(env, "PATH="+filepath.Dir(gcBinary)+":"+filepath.Dir(bdBinary)+":"+os.Getenv("PATH"))
