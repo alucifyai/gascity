@@ -6,7 +6,9 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,7 +77,28 @@ func setupCity(t *testing.T, guard *tmuxtest.Guard, agents []agentConfig) string
 	// Give sessions a moment to register.
 	time.Sleep(200 * time.Millisecond)
 
+	// Diagnostic: list all tmux sessions on the city socket to verify creation.
+	if guard != nil {
+		listTmuxSessions(t, guard.SocketName(), "city socket ("+guard.SocketName()+")")
+	}
+
 	return cityDir
+}
+
+// listTmuxSessions logs all tmux sessions on the given socket for debugging.
+func listTmuxSessions(t *testing.T, socket, label string) {
+	t.Helper()
+	var args []string
+	if socket != "" {
+		args = append(args, "-L", socket)
+	}
+	args = append(args, "list-sessions", "-F", "#{session_name}")
+	out, err := exec.Command("tmux", args...).CombinedOutput()
+	if err != nil {
+		t.Logf("tmux sessions [%s]: (no server/sessions: %v)", label, err)
+		return
+	}
+	t.Logf("tmux sessions [%s]: %s", label, strings.TrimSpace(string(out)))
 }
 
 // setupCityNoGuard creates a city without requiring a tmuxtest.Guard.
