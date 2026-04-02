@@ -76,6 +76,16 @@ RUN useradd -m -s /bin/bash gctest && \
 USER gctest
 WORKDIR /workspace
 
+# Configure git and dolt identity for the gctest user.
+# Required by gc-beads-bd's ensure_dolt_identity() which falls back to git config.
+RUN git config --global user.name "Gas City Test" && \
+    git config --global user.email "gctest@gascity.local" && \
+    dolt config --global --add user.name "Gas City Test" && \
+    dolt config --global --add user.email "gctest@gascity.local"
+
+RUN mkdir -p /home/gctest/.claude
+# COPY --chown=gctest:gctest claude.credentials.json /home/gctest/.claude/.credentials.json
+
 # Copy source code
 COPY --chown=gctest:gctest . .
 
