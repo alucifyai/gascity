@@ -345,7 +345,7 @@ func gracefulStopAll(
 		}
 	}
 
-	// Pass 2: kill survivors.
+	// Pass 2: kill survivors and clean up gracefully-exited sessions.
 	var survivors []string
 	for _, name := range names {
 		if !sp.IsRunning(name) {
@@ -357,6 +357,10 @@ func gracefulStopAll(
 			rec.Record(events.Event{
 				Type: events.SessionStopped, Actor: "gc", Subject: subject,
 			})
+			// The agent process exited but the session container (e.g.
+			// tmux session with a dead pane) may still exist.  Destroy
+			// it so the session provider's server can exit cleanly.
+			sp.Stop(name) //nolint:errcheck // best-effort cleanup
 			continue
 		}
 		survivors = append(survivors, name)
