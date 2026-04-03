@@ -113,13 +113,13 @@ test-acceptance-c:
 ## test-acceptance-all: run all acceptance tiers
 test-acceptance-all: test-acceptance test-acceptance-b test-acceptance-c
 
-## test-tutorial-regression: run manual tutorial regression tests (requires tmux, bd)
+## test-tutorial-regression: run manual tutorial regression tests (requires tmux, dolt bd, claude authed)
 test-tutorial-regression:
 	go test -tags 'integration acceptance' -timeout 10m -v -run TestTutorialRegression ./test/integration/
 
-## test-integration: run all tests including integration (tmux, etc.)
+## test-integration: run all tests including integration (tmux, dolt, bd, claude no need auth)
 test-integration:
-	go test -tags integration -timeout 8m ./...
+	go test -tags integration -timeout 120m ./...
 
 ## test-tutorial: run tutorial acceptance tests (requires tmux, dolt, bd, claude authed)
 ## These exercise the full tutorial flow with real inference — run before each release.
@@ -140,7 +140,7 @@ COVER_PKGS := $(shell go list ./... | grep -v -e /session/tmux -e /beadstest)
 
 ## test-cover: run all tests with coverage output (excludes tmux)
 test-cover:
-	go test -tags integration -timeout 8m -coverprofile=coverage.txt $(COVER_PKGS)
+	go test -tags integration -timeout 120m -coverprofile=coverage.txt $(COVER_PKGS)
 
 ## cover: run tests and show coverage report
 cover: test-cover
