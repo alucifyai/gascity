@@ -47,10 +47,16 @@ func setupGasTownCity(t *testing.T, guard *tmuxtest.Guard, agents []gasTownAgent
 
 	cityDir := filepath.Join(t.TempDir(), cityName)
 
-	// gc init
-	out, err := gc("", "init", cityDir)
+	// gc init — skip provider readiness (CI/Docker has no provider CLIs).
+	out, err := gc("", "init", "--skip-provider-readiness", cityDir)
 	if err != nil {
 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
+	}
+	// gc init auto-starts a default tutorial city via supervisor.
+	// Stop it before overwriting city.toml with test config.
+	out, err = gc("", "stop", cityDir)
+	if err != nil {
+		t.Fatalf("gc stop after init failed: %v\noutput: %s", err, out)
 	}
 
 	// Initialize bd so that beads commands work (gc mail, bd create, etc.).
@@ -90,7 +96,7 @@ func writeGasTownToml(t *testing.T, cityDir, cityName string, agents []gasTownAg
 
 	for _, a := range agents {
 		fmt.Fprintf(&b, "\n[[agent]]\nname = %s\n", quote(a.Name))
-		fmt.Fprintf(&b, "start_command = %s\n", quote(a.StartCommand))
+		fmt.Fprintf(&b, "start_command = %s\nprompt_mode = \"none\"\n", quote(a.StartCommand))
 		if a.Dir != "" {
 			fmt.Fprintf(&b, "dir = %s\n", quote(a.Dir))
 		}
@@ -189,9 +195,16 @@ func verifyEvents(t *testing.T, cityDir, eventType string) {
 // initBd initializes a bd database in the given directory so that
 // bd CLI commands work. Uses a unique prefix per test to avoid
 // cross-contamination on shared dolt servers.
-// Returns the prefix used (for diagnostics).
+// If .beads/ already exists (e.g., gc init + startBeadsLifecycle already
+// initialized it), this is a no-op — re-running bd init would fail with
+// "This workspace is already initialized."
+// Returns the prefix used (for diagnostics), or "" if skipped.
 func initBd(t *testing.T, dir string) string {
 	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, ".beads")); err == nil {
+		t.Logf("initBd: .beads/ already exists in %s, skipping", dir)
+		return ""
+	}
 	prefix := uniqueCityName() // e.g., "gctest-a1b2c3d4" — unique per call
 	cmd := exec.Command(bdBinary, "init", "-p", prefix, "--skip-hooks", "-q")
 	cmd.Dir = dir
