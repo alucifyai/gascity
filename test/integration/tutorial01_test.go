@@ -187,36 +187,11 @@ func TestTutorial01_BashAgent(t *testing.T) {
 	}
 
 	// Create a bead and claim it for the agent.
-	out, err := bd(cityDir, "create", "Build a Tower of Hanoi app")
-	if err != nil {
-		t.Fatalf("bd create failed: %v\noutput: %s", err, out)
-	}
-	beadID := extractBeadID(t, out)
+	beadID := createBead(t, cityDir, "Build a Tower of Hanoi app")
+	claimBead(t, cityDir, "mayor", beadID)
 
-	out, err = gc(cityDir, "agent", "claim", "mayor", beadID)
-	if err != nil {
-		t.Fatalf("gc agent claim failed: %v\noutput: %s", err, out)
-	}
-
-	// Poll until the bead is closed (agent processed it).
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		out, _ = bd(cityDir, "show", beadID)
-		if strings.Contains(out, "closed") {
-			t.Logf("Bead closed: %s", out)
-
-			out, err = gc("", "stop", cityDir)
-			if err != nil {
-				t.Fatalf("gc stop failed: %v\noutput: %s", err, out)
-			}
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	beadShow, _ := bd(cityDir, "show", beadID)
-	beadList, _ := bd(cityDir, "list")
-	t.Fatalf("timed out waiting for bead close\nbead show:\n%s\nbead list:\n%s", beadShow, beadList)
+	// Wait for the one-shot agent to close the bead.
+	waitForBeadStatus(t, cityDir, beadID, "closed", 10*time.Second)
 }
 
 // extractBeadID parses a bead ID from bd create output.

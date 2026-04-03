@@ -60,6 +60,14 @@ func setupCity(t *testing.T, guard *tmuxtest.Guard, agents []agentConfig) string
 		t.Fatalf("gc init failed: %v\noutput: %s", err, out)
 	}
 
+	// gc init auto-starts the city with default tutorial config (claude agent).
+	// Stop the city so we can overwrite city.toml with test-specific agents
+	// before restarting. Without this, the default claude agent keeps running.
+	out, err = gc("", "stop", cityDir)
+	if err != nil {
+		t.Fatalf("gc stop (post-init) failed: %v\noutput: %s", err, out)
+	}
+
 	// Overwrite city.toml with our agent config.
 	writeAgentsToml(t, cityDir, cityName, agents)
 
@@ -123,7 +131,7 @@ func writeAgentsToml(t *testing.T, cityDir, cityName string, agents []agentConfi
 	t.Helper()
 	content := "[workspace]\nname = " + quote(cityName) + "\n"
 	for _, a := range agents {
-		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\n",
+		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\nprompt_mode = \"none\"\n",
 			quote(a.Name), quote(a.StartCommand))
 	}
 	tomlPath := filepath.Join(cityDir, "city.toml")
