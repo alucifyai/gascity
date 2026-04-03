@@ -1,35 +1,36 @@
 #!/bin/bash
 # Bash agent: loop worker.
-# Implements the same flow as prompts/loop.md using gc CLI commands.
-# Continuously drains the backlog: check claim → claim from ready → close → repeat.
+# Continuously drains the backlog: check assigned → claim from ready → close → repeat.
 #
 # Required env vars (set by gc start):
 #   GC_AGENT — this agent's name
 #   GC_CITY  — path to the city directory
-#   PATH     — must include gc binary
+#   PATH     — must include gc and bd binaries
 
 set -euo pipefail
 cd "$GC_CITY"
 
 while true; do
-    # Step 1: Check for already-claimed work
-    hooked=$(gc agent claimed "$GC_AGENT" 2>/dev/null || true)
+    # Step 1: Check for work already assigned to this agent.
+    assigned=$(bd list --json --assignee="$GC_AGENT" --status=in_progress --limit 1 2>/dev/null || true)
+    id=$(echo "$assigned" | { grep '"id"' || true; } | head -1 | sed 's/.*"id": *"\([^"]*\)".*/\1/')
 
-    if echo "$hooked" | grep -q "^ID:"; then
-        # Step 5-6: Execute work and close the bead
-        id=$(echo "$hooked" | grep "^ID:" | awk '{print $2}')
-        bd close "$id"
+    if [ -n "$id" ]; then
+        # Step 2: Close the bead (simulates executing the work)
+        bd close "$id" 2>/dev/null || true
         continue
     fi
 
-    # Step 3: Check for available work in ready queue
-    ready=$(bd ready 2>/dev/null || true)
+    # Step 3: Check for available work in ready queue.
+    ready=$(bd ready --json --limit 1 2>/dev/null || true)
+    ready_id=$(echo "$ready" | { grep '"id"' || true; } | head -1 | sed 's/.*"id": *"\([^"]*\)".*/\1/')
 
-    if echo "$ready" | grep -q "^gc-"; then
-        # Step 4: Claim the first available bead
-        id=$(echo "$ready" | grep "^gc-" | head -1 | awk '{print $1}')
-        gc agent claim "$GC_AGENT" "$id" 2>/dev/null || true
-        # Will process on next iteration (now claimed)
+    if [ -n "$ready_id" ]; then
+        # Step 4: Claim the bead (assign to self and set in_progress).
+        # Note: bd update --claim sets assignee to beads.role which may be
+        # unconfigured. Use explicit --assignee + --status instead.
+        bd update "$ready_id" --assignee "$GC_AGENT" --status in_progress 2>/dev/null || true
+        # Will process on next iteration (now assigned)
         continue
     fi
 
