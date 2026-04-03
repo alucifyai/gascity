@@ -511,7 +511,7 @@ func (s *BdStore) Close(id string) error {
 
 // List returns all beads via bd list.
 func (s *BdStore) List() ([]Bead, error) {
-	out, err := s.runner(s.dir, "bd", "list", "--json", "--limit", "0", "--all")
+	out, err := s.runner(s.dir, "bd", "list", "--json", "--limit", "0", "--all", "--include-infra")
 	if err != nil {
 		return nil, fmt.Errorf("bd list: %w", err)
 	}
@@ -527,7 +527,7 @@ func (s *BdStore) List() ([]Bead, error) {
 // Limit controls max results (0 = unlimited). Results are ordered by bd's
 // default sort (newest first).
 func (s *BdStore) ListByLabel(label string, limit int) ([]Bead, error) {
-	args := []string{"list", "--json", "--label=" + label, "--all", "--limit", fmt.Sprintf("%d", limit)}
+	args := []string{"list", "--json", "--label=" + label, "--all", "--limit", fmt.Sprintf("%d", limit), "--include-infra"}
 	out, err := s.runner(s.dir, "bd", args...)
 	if err != nil {
 		return nil, fmt.Errorf("bd list: %w", err)
@@ -543,7 +543,7 @@ func (s *BdStore) ListByLabel(label string, limit int) ([]Bead, error) {
 // ListByAssignee returns beads assigned to the given agent with the specified
 // status via bd list --assignee --status. Limit controls max results (0 = unlimited).
 func (s *BdStore) ListByAssignee(assignee, status string, limit int) ([]Bead, error) {
-	args := []string{"list", "--json", "--assignee=" + assignee, "--status=" + status, "--limit", fmt.Sprintf("%d", limit)}
+	args := []string{"list", "--json", "--assignee=" + assignee, "--status=" + status, "--limit", fmt.Sprintf("%d", limit), "--include-infra"}
 	out, err := s.runner(s.dir, "bd", args...)
 	if err != nil {
 		return nil, fmt.Errorf("bd list: %w", err)
