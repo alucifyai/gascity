@@ -126,7 +126,9 @@ func bd(dir string, args ...string) (string, error) {
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = os.Environ()
+	// Use integrationEnv() so bd hooks (which call gc event emit)
+	// can find the test-built gc binary in PATH.
+	cmd.Env = integrationEnv()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
