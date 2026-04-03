@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -37,54 +36,13 @@ func TestTutorial02_BashAgent(t *testing.T) {
 		}
 	}
 
-	// Create two beads and hook each to a different agent.
-	out, err := bd(cityDir, "create", "Task for Alice")
-	if err != nil {
-		t.Fatalf("bd create failed: %v\noutput: %s", err, out)
-	}
-	aliceBead := extractBeadID(t, out)
+	// Create two beads and claim each for a different agent.
+	aliceBead := createBead(t, cityDir, "Task for Alice")
+	bobBead := createBead(t, cityDir, "Task for Bob")
+	claimBead(t, cityDir, "alice", aliceBead)
+	claimBead(t, cityDir, "bob", bobBead)
 
-	out, err = bd(cityDir, "create", "Task for Bob")
-	if err != nil {
-		t.Fatalf("bd create failed: %v\noutput: %s", err, out)
-	}
-	bobBead := extractBeadID(t, out)
-
-	out, err = gc(cityDir, "agent", "claim", "alice", aliceBead)
-	if err != nil {
-		t.Fatalf("gc agent claim alice failed: %v\noutput: %s", err, out)
-	}
-
-	out, err = gc(cityDir, "agent", "claim", "bob", bobBead)
-	if err != nil {
-		t.Fatalf("gc agent claim bob failed: %v\noutput: %s", err, out)
-	}
-
-	// Poll until both beads are closed.
-	deadline := time.Now().Add(10 * time.Second)
-	aliceDone, bobDone := false, false
-	for time.Now().Before(deadline) {
-		if !aliceDone {
-			out, _ = bd(cityDir, "show", aliceBead)
-			if strings.Contains(out, "closed") {
-				aliceDone = true
-				t.Logf("Alice's bead closed")
-			}
-		}
-		if !bobDone {
-			out, _ = bd(cityDir, "show", bobBead)
-			if strings.Contains(out, "closed") {
-				bobDone = true
-				t.Logf("Bob's bead closed")
-			}
-		}
-		if aliceDone && bobDone {
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	beadList, _ := bd(cityDir, "list")
-	t.Fatalf("timed out waiting for both beads to close (alice=%v, bob=%v)\nbead list:\n%s",
-		aliceDone, bobDone, beadList)
+	// Wait for both one-shot agents to close their beads.
+	waitForBeadStatus(t, cityDir, aliceBead, "closed", 10*time.Second)
+	waitForBeadStatus(t, cityDir, bobBead, "closed", 10*time.Second)
 }

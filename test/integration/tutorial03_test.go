@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -39,38 +38,19 @@ func TestTutorial03_BashAgent(t *testing.T) {
 		}
 	}
 
-	// Create three beads — the agent should drain them all.
+	// Create three beads — the loop agent should drain them all
+	// by self-claiming from the ready queue.
 	var beadIDs []string
 	for _, title := range []string{
 		"Implement 3-disk solver",
 		"Add animation to disc moves",
 		"Write unit tests for the solver",
 	} {
-		out, err := bd(cityDir, "create", title)
-		if err != nil {
-			t.Fatalf("bd create failed: %v\noutput: %s", err, out)
-		}
-		beadIDs = append(beadIDs, extractBeadID(t, out))
+		beadIDs = append(beadIDs, createBead(t, cityDir, title))
 	}
 
-	// Poll until all three beads are closed.
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		allClosed := true
-		for _, id := range beadIDs {
-			out, _ := bd(cityDir, "show", id)
-			if !strings.Contains(out, "Status:   closed") {
-				allClosed = false
-				break
-			}
-		}
-		if allClosed {
-			t.Logf("All %d beads closed", len(beadIDs))
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
+	// Wait for all three beads to be closed.
+	for _, id := range beadIDs {
+		waitForBeadStatus(t, cityDir, id, "closed", 15*time.Second)
 	}
-
-	beadList, _ := bd(cityDir, "list")
-	t.Fatalf("timed out waiting for all beads to close\nbead list:\n%s", beadList)
 }
