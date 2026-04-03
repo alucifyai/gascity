@@ -162,19 +162,25 @@ func createBead(t *testing.T, cityDir, title string) string {
 	return extractBeadID(t, out)
 }
 
-// claimBead assigns a bead to an agent.
+// claimBead assigns a bead to an agent and sets status to in_progress.
+// Note: bd has a --claim flag that does this atomically, but it sets the
+// assignee to the configured beads.role (which is unset in tests). We use
+// explicit --assignee + --status instead so the agent name is controlled.
 func claimBead(t *testing.T, cityDir, agent, beadID string) {
 	t.Helper()
-	out, err := gc(cityDir, "agent", "claim", agent, beadID)
+	out, err := bd(cityDir, "update", beadID, "--assignee", agent, "--status", "in_progress")
 	if err != nil {
-		t.Fatalf("gc agent claim %s %s failed: %v\noutput: %s", agent, beadID, err, out)
+		t.Fatalf("bd update %s --assignee %s failed: %v\noutput: %s", beadID, agent, err, out)
 	}
 }
 
 // sendMail sends a message to a recipient.
+// Uses -s/−m flags so that bd receives a non-empty title (subject).
+// bd rejects beads with an empty title, and the positional-only form
+// (gc mail send <to> <body>) leaves the subject empty.
 func sendMail(t *testing.T, cityDir, to, body string) {
 	t.Helper()
-	out, err := gc(cityDir, "mail", "send", to, body)
+	out, err := gc(cityDir, "mail", "send", to, "-s", body, "-m", body)
 	if err != nil {
 		t.Fatalf("gc mail send %s %q failed: %v\noutput: %s", to, body, err, out)
 	}
