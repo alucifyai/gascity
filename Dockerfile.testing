@@ -89,6 +89,9 @@ RUN mkdir -p /home/gctest/.claude
 # Copy source code
 COPY --chown=gctest:gctest . .
 
+# Change to gascity subdirectory where go.mod lives
+WORKDIR /workspace/gascity
+
 # Set up Go module cache and build dependencies
 RUN go mod download
 
