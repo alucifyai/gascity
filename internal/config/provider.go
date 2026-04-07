@@ -89,6 +89,10 @@ type ProviderSpec struct {
 	// Each option maps to CLI args via its Choices[].FlagArgs field.
 	// Serialized via a dedicated DTO (not directly to JSON) so FlagArgs stays server-side.
 	OptionsSchema []ProviderOption `toml:"options_schema,omitempty" json:"-"`
+	// RateLimitPatterns lists substring patterns that indicate rate-limiting
+	// in the provider's output (e.g. "rate limit exceeded", "429 Too Many Requests").
+	// Used by the quota rotation system to detect when an account is throttled.
+	RateLimitPatterns []string `toml:"rate_limit_patterns,omitempty"`
 }
 
 // ResolvedProvider is the fully-merged, ready-to-use provider config.
@@ -113,6 +117,7 @@ type ResolvedProvider struct {
 	SessionIDFlag          string
 	PermissionModes        map[string]string
 	OptionsSchema          []ProviderOption
+	RateLimitPatterns      []string
 }
 
 // CommandString returns the full command line: command followed by args.
