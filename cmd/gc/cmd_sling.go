@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/account"
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/citylayout"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/molecule"
@@ -49,6 +51,7 @@ func newSlingCmd(stdout, stderr io.Writer) *cobra.Command {
 	var dryRun bool
 	var noFormula bool
 	var fromStdin bool
+	var accountHandle string
 	cmd := &cobra.Command{
 		Use:   "sling [target] <bead-or-formula-or-text>",
 		Short: "Route work to an agent or pool",
@@ -89,7 +92,7 @@ Examples:
 				fmt.Fprintf(stderr, "gc sling: --merge must be direct, mr, or local\n") //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			code := cmdSling(args, formula, nudge, force, title, vars, merge, noConvoy, owned, onFormula, noFormula, fromStdin, dryRun, stdout, stderr)
+			code := cmdSling(args, formula, nudge, force, title, vars, merge, noConvoy, owned, onFormula, noFormula, fromStdin, dryRun, accountHandle, stdout, stderr)
 			if code != 0 {
 				return errExit
 			}
@@ -108,6 +111,7 @@ Examples:
 	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would be done without executing")
 	cmd.Flags().BoolVar(&noFormula, "no-formula", false, "suppress default formula (route raw bead)")
 	cmd.Flags().BoolVar(&fromStdin, "stdin", false, "read bead text from stdin (first line = title, rest = description)")
+	cmd.Flags().StringVar(&accountHandle, "account", "", "account handle to use for this dispatch")
 	cmd.MarkFlagsMutuallyExclusive("formula", "on")
 	cmd.MarkFlagsMutuallyExclusive("no-formula", "formula")
 	cmd.MarkFlagsMutuallyExclusive("no-formula", "on")
@@ -130,6 +134,7 @@ type slingOpts struct {
 	Nudge         bool
 	Force         bool
 	DryRun        bool
+	AccountFlag   string // --account flag value for account resolution
 }
 
 // slingDeps bundles infrastructure dependencies injected for testability.
@@ -140,8 +145,9 @@ type slingDeps struct {
 	SP       runtime.Provider
 	Runner   SlingRunner
 	Store    beads.Store
-	Stdout   io.Writer
-	Stderr   io.Writer
+	Stdout          io.Writer
+	Stderr          io.Writer
+	AccountRegistry account.Registry // loaded from accounts.json; zero-value = no accounts
 }
 
 // SlingRunner executes a shell command in the given directory with optional
@@ -174,7 +180,7 @@ func shellSlingRunner(dir, command string, env map[string]string) (string, error
 }
 
 // cmdSling is the CLI entry point for gc sling.
-func cmdSling(args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned bool, onFormula string, noFormula, fromStdin, dryRun bool, stdout, stderr io.Writer) int {
+func cmdSling(args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned bool, onFormula string, noFormula, fromStdin, dryRun bool, accountFlag string, stdout, stderr io.Writer) int {
 	// --stdin: read bead text from stdin early (before city resolution)
 	// so errors are reported immediately. First line = title, rest = description.
 	var stdinDescription string
@@ -300,6 +306,13 @@ func cmdSling(args []string, isFormula, doNudge, force bool, title string, vars 
 		beadOrFormula = created.ID
 	}
 
+	// Load account registry from accounts.json (if present).
+	acctRegistry, err := account.Load(citylayout.AccountsFilePath(cityPath))
+	if err != nil {
+		fmt.Fprintf(stderr, "gc sling: loading accounts: %v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
 	opts := slingOpts{
 		Target:        a,
 		BeadOrFormula: beadOrFormula,
@@ -314,16 +327,18 @@ func cmdSling(args []string, isFormula, doNudge, force bool, title string, vars 
 		Nudge:         doNudge,
 		Force:         force,
 		DryRun:        dryRun,
+		AccountFlag:   accountFlag,
 	}
 	deps := slingDeps{
-		CityName: cityName,
-		CityPath: cityPath,
-		Cfg:      cfg,
-		SP:       sp,
-		Runner:   shellSlingRunner,
-		Store:    store,
-		Stdout:   stdout,
-		Stderr:   stderr,
+		CityName:        cityName,
+		CityPath:        cityPath,
+		Cfg:             cfg,
+		SP:              sp,
+		Runner:          shellSlingRunner,
+		Store:           store,
+		Stdout:          stdout,
+		Stderr:          stderr,
+		AccountRegistry: acctRegistry,
 	}
 
 	return doSlingBatch(opts, deps, store)
@@ -379,6 +394,22 @@ func slingDirForBead(cfg *config.City, cityPath, beadID string) string {
 // doSling is the pure logic for gc sling. Accepts injected deps, querier,
 // and opts struct for testability.
 func doSling(opts slingOpts, deps slingDeps, querier BeadQuerier) int {
+	// Immediate account validation — if --account was specified, verify
+	// the handle exists in the registry before any dispatch work.
+	if opts.AccountFlag != "" {
+		found := false
+		for _, acct := range deps.AccountRegistry.Accounts {
+			if acct.Handle == opts.AccountFlag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(deps.Stderr, "gc sling: account %q is not registered\n", opts.AccountFlag) //nolint:errcheck // best-effort stderr
+			return 1
+		}
+	}
+
 	a := opts.Target
 	// Warn about suspended agents / empty pools (unless --force).
 	if a.Suspended && !opts.Force {
