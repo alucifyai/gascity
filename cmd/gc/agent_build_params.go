@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/account"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -38,6 +39,15 @@ type agentBuildParams struct {
 	// beadNames caches qualifiedName → session_name mappings resolved
 	// during this build cycle. Populated lazily by resolveSessionName.
 	beadNames map[string]string
+
+	// accountRegistry holds the city-level account registry for account
+	// resolution during template resolution. Zero-value (empty Registry)
+	// means no accounts are configured — account resolution is a no-op.
+	accountRegistry account.Registry
+
+	// accountFlag holds the --account CLI flag value. When non-empty, it
+	// overrides the agent's config Account field in the resolution chain.
+	accountFlag string
 }
 
 // newAgentBuildParams constructs agentBuildParams from the common startup values.

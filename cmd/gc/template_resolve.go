@@ -142,6 +142,13 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		agentEnv["BEADS_DIR"] = filepath.Join(rigRoot, ".beads")
 	}
 
+	// Step 8b: Resolve account → CLAUDE_CONFIG_DIR.
+	if configDir, err := resolveAccountEnv(p.accountRegistry, os.Getenv("GC_ACCOUNT"), p.accountFlag, cfgAgent.Account); err != nil {
+		return TemplateParams{}, fmt.Errorf("agent %q: %w", qualifiedName, err)
+	} else if configDir != "" {
+		agentEnv["CLAUDE_CONFIG_DIR"] = configDir
+	}
+
 	// Step 9: Render prompt with beacon.
 	var prompt string
 	if resolved.PromptMode != "none" {
