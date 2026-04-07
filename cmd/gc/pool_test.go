@@ -452,6 +452,7 @@ func TestDeepCopyAgentCoversAllFields(t *testing.T) {
 		DependsOn:              []string{"other-agent"},
 		WakeMode:               "fresh",
 		Implicit:               true,
+		Account:                "work1",
 	}
 
 	// Verify every Agent field is set (non-zero) in the test data.
@@ -530,6 +531,34 @@ func TestDeepCopyAgentSetsPoolName(t *testing.T) {
 	dst := deepCopyAgent(src, "dog-1", "hello-world")
 	if dst.PoolName != "hello-world/dog" {
 		t.Errorf("PoolName = %q, want %q", dst.PoolName, "hello-world/dog")
+	}
+}
+
+// TestDeepCopyAgent_Account verifies that deepCopyAgent copies the Account
+// field from the source agent to the destination.
+func TestDeepCopyAgent_Account(t *testing.T) {
+	src := &config.Agent{
+		Name:    "original",
+		Dir:     "original-dir",
+		Account: "work1",
+	}
+	dst := deepCopyAgent(src, "copy-name", "copy-dir")
+	if dst.Account != "work1" {
+		t.Errorf("Account = %q, want %q", dst.Account, "work1")
+	}
+}
+
+// TestDeepCopyAgent_Account_Empty verifies that deepCopyAgent copies an empty
+// Account field correctly (zero value preserved).
+func TestDeepCopyAgent_Account_Empty(t *testing.T) {
+	src := &config.Agent{
+		Name: "original",
+		Dir:  "original-dir",
+		// Account intentionally left empty
+	}
+	dst := deepCopyAgent(src, "copy-name", "copy-dir")
+	if dst.Account != "" {
+		t.Errorf("Account = %q, want empty string", dst.Account)
 	}
 }
 
