@@ -76,6 +76,8 @@ type AgentPatch struct {
 	ResumeCommand *string `toml:"resume_command,omitempty"`
 	// WakeMode overrides the agent's wake mode ("resume" or "fresh").
 	WakeMode *string `toml:"wake_mode,omitempty" jsonschema:"enum=resume,enum=fresh"`
+	// Account overrides the agent's account handle.
+	Account *string `toml:"account,omitempty"`
 	// PreStartAppend appends commands to the agent's pre_start list
 	// (instead of replacing). Applied after PreStart if both are set.
 	PreStartAppend []string `toml:"pre_start_append,omitempty"`
@@ -262,6 +264,9 @@ func applyAgentPatchFields(a *Agent, p *AgentPatch) {
 	}
 	if p.WakeMode != nil {
 		a.WakeMode = *p.WakeMode
+	}
+	if p.Account != nil {
+		a.Account = *p.Account
 	}
 	if len(p.InjectFragments) > 0 {
 		a.InjectFragments = append([]string(nil), p.InjectFragments...)
