@@ -60,6 +60,9 @@ func ValidateNewAccount(reg Registry, acct Account) error {
 	// Check config_dir exists.
 	info, err := os.Stat(acct.ConfigDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("config_dir %q does not exist", acct.ConfigDir)
+		}
 		return fmt.Errorf("config_dir %q: %w", acct.ConfigDir, err)
 	}
 

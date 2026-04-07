@@ -1,0 +1,74 @@
+# Account Registry — gc account add / list / default / remove
+#
+# Tests the account CRUD subcommands end-to-end.
+# See IMPL §Step 1.9, TEST §Step 1.9, PRD §Account Registry.
+
+env GC_SESSION=fake
+env GC_BEADS=file
+env GC_DOLT=skip
+
+# Initialize a city so .gc/ directory exists.
+exec gc init $WORK/testcity
+cd $WORK/testcity
+
+# Create temp config directories for accounts.
+mkdir $WORK/cfgdir1
+mkdir $WORK/cfgdir2
+
+# ── Scenario: No accounts registered ──────────────────────────
+# gc account list with no accounts → prompts operator.
+! exec gc account list
+stderr 'no accounts registered'
+
+# ── Scenario: Add valid account ───────────────────────────────
+exec gc account add --handle work1 --email user@example.com --config-dir $WORK/cfgdir1
+stdout 'work1'
+
+# ── Scenario: Add second account with description ─────────────
+exec gc account add --handle work2 --email user2@example.com --description 'Second account' --config-dir $WORK/cfgdir2
+stdout 'work2'
+
+# ── Scenario: List shows accounts ─────────────────────────────
+exec gc account list
+stdout 'work1'
+stdout 'user@example.com'
+stdout 'work2'
+stdout 'user2@example.com'
+
+# ── Scenario: Set default ─────────────────────────────────────
+exec gc account default work1
+stdout 'work1'
+
+# ── Scenario: List shows default flag ─────────────────────────
+exec gc account list
+stdout 'work1'
+stdout 'default'
+
+# ── Scenario: Duplicate handle rejected ───────────────────────
+! exec gc account add --handle work1 --email dup@example.com --config-dir $WORK/cfgdir1
+stderr 'handle work1 is already registered'
+
+# ── Scenario: Invalid handle format ──────────────────────────
+! exec gc account add --handle 'my account' --email bad@example.com --config-dir $WORK/cfgdir1
+stderr 'disallowed'
+
+# ── Scenario: Missing config_dir ──────────────────────────────
+! exec gc account add --handle work3 --email bad@example.com --config-dir /nonexistent/path
+stderr 'does not exist'
+
+# ── Scenario: Remove non-default account ──────────────────────
+exec gc account remove work2
+stdout 'work2'
+
+# Verify work2 gone from list.
+exec gc account list
+! stdout 'work2'
+stdout 'work1'
+
+# ── Scenario: Remove default account warns ────────────────────
+exec gc account remove work1
+stderr 'was the default account'
+
+# After removing the default, list should show no accounts.
+! exec gc account list
+stderr 'no accounts registered'
