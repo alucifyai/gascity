@@ -84,7 +84,14 @@ func DefaultTmuxOps() TmuxOps {
 			return panes, nil
 		},
 		IsRunning: func() bool {
-			return tm.IsAvailable()
+			if !tm.IsAvailable() {
+				return false
+			}
+			// Check if a tmux server is actually running with sessions,
+			// not just that the binary is installed. The PRD requires
+			// preflight detection of "tmux is not running or no sessions exist."
+			sessions, err := tm.ListSessions()
+			return err == nil && len(sessions) > 0
 		},
 	}
 }

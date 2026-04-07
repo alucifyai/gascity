@@ -1,0 +1,443 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gastownhall/gascity/internal/account"
+	"github.com/gastownhall/gascity/internal/clock"
+	"github.com/gastownhall/gascity/internal/config"
+)
+
+// ---------------------------------------------------------------------------
+// Tmux-dependent Go unit tests for gc quota CLI commands (Step 2.8)
+// ---------------------------------------------------------------------------
+
+// TestQuotaScanCmd_TmuxNotRunning verifies that gc quota scan fails immediately
+// with the correct PRD error message when tmux is not running.
+func TestQuotaScanCmd_TmuxNotRunning(t *testing.T) {
+	tmp := t.TempDir()
+	quotaPath := filepath.Join(tmp, ".gc", "quota.json")
+
+	// Set up a registry with one account.
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+		},
+	}
+
+	tmux := FakeTmuxOps(nil) // nil panes → IsRunning returns false
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaScanCmd(tmux, []string{"rate limit"}, reg, quotaPath, clock.Real{}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Fatal("expected non-zero exit code when tmux is not running")
+	}
+	if !strings.Contains(stderr.String(), "tmux is not running") {
+		t.Errorf("expected stderr to contain 'tmux is not running', got: %s", stderr.String())
+	}
+
+	// Verify no changes made to quota.json.
+	if _, err := os.Stat(quotaPath); !os.IsNotExist(err) {
+		t.Error("quota.json should not have been created when tmux is not running")
+	}
+}
+
+// TestQuotaRotateCmd_TmuxNotRunning verifies that gc quota rotate fails
+// immediately with the correct PRD error message when tmux is not running.
+func TestQuotaRotateCmd_TmuxNotRunning(t *testing.T) {
+	tmp := t.TempDir()
+	quotaPath := filepath.Join(tmp, ".gc", "quota.json")
+
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+		},
+	}
+
+	tmux := FakeTmuxOps(nil) // IsRunning returns false
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaRotateCmd(tmux, reg, quotaPath, clock.Real{}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Fatal("expected non-zero exit code when tmux is not running")
+	}
+	if !strings.Contains(stderr.String(), "tmux is not running") {
+		t.Errorf("expected stderr to contain 'tmux is not running', got: %s", stderr.String())
+	}
+}
+
+// TestQuotaRotateCmd_LocksAndWrites verifies that doQuotaRotateCmd uses
+// withQuotaLock to ensure exclusive access and writes state atomically
+// once at the end. After a successful rotation, the quota.json file
+// should contain the updated state.
+func TestQuotaRotateCmd_LocksAndWrites(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	// Pre-seed quota state with work1 as limited.
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-07T10:00:00Z",
+			},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+			{Handle: "work2", ConfigDir: "/tmp/cfg2"},
+		},
+	}
+
+	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
+
+	// Set up FakeTmuxOps: work1 session using cfg1 (limited), work2 not present.
+	panes := map[string]*FakePane{
+		"sess-work1": {
+			Output: "rate limit exceeded",
+			Env:    map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/cfg1"},
+		},
+	}
+	tmux := FakeTmuxOps(panes)
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaRotateCmd(tmux, reg, quotaPath, clk, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	// Read the written state and verify.
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatalf("loading persisted quota state: %v", err)
+	}
+
+	// work2 should have been used (available, updated last_used).
+	w2, ok := loaded.Accounts["work2"]
+	if !ok {
+		t.Fatal("work2 should be in quota state after rotation")
+	}
+	if w2.LastUsed == "" {
+		t.Error("work2 last_used should be updated after rotation")
+	}
+
+	// work1 should have been cleared (available, not limited).
+	w1, ok := loaded.Accounts["work1"]
+	if !ok {
+		t.Fatal("work1 should be in quota state after rotation")
+	}
+	if w1.Status != config.QuotaStatusAvailable {
+		t.Errorf("work1 should be available after rotation, got %q", w1.Status)
+	}
+
+	// Verify the lock file was created (evidence of flock usage).
+	lockPath := quotaPath + ".lock"
+	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+		t.Error("expected lock file to exist (evidence of withQuotaLock usage)")
+	}
+}
+
+// TestQuotaScanCmd_WritesBeforeExit verifies that doQuotaScanCmd persists
+// the scan results to quota.json before returning, per PRD requirement
+// "Results written to quota.json before scan exits."
+func TestQuotaScanCmd_WritesBeforeExit(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+			{Handle: "work2", ConfigDir: "/tmp/cfg2"},
+		},
+	}
+
+	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 14, 0, 0, 0, time.UTC)}
+
+	panes := map[string]*FakePane{
+		"sess-work1": {
+			Output: "Error: rate limit exceeded. Resets at 2026-04-07T15:00:00Z",
+			Env:    map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/cfg1"},
+		},
+		"sess-work2": {
+			Output: "Task completed successfully.",
+			Env:    map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/cfg2"},
+		},
+	}
+	tmux := FakeTmuxOps(panes)
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaScanCmd(tmux, []string{"rate limit"}, reg, quotaPath, clk, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	// Verify quota.json exists and has the scan results.
+	data, err := os.ReadFile(quotaPath)
+	if err != nil {
+		t.Fatalf("quota.json should exist after scan: %v", err)
+	}
+
+	var loaded config.QuotaState
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("quota.json should be valid JSON: %v", err)
+	}
+
+	// work1 should be limited.
+	w1, ok := loaded.Accounts["work1"]
+	if !ok {
+		t.Fatal("work1 should be in quota state")
+	}
+	if w1.Status != config.QuotaStatusLimited {
+		t.Errorf("work1 should be limited, got %q", w1.Status)
+	}
+	if w1.LimitedAt != "2026-04-07T14:00:00Z" {
+		t.Errorf("work1 limited_at should match clock, got %q", w1.LimitedAt)
+	}
+	if w1.ResetsAt != "2026-04-07T15:00:00Z" {
+		t.Errorf("work1 resets_at should be parsed, got %q", w1.ResetsAt)
+	}
+
+	// work2 should NOT be in state (no rate-limit match).
+	if _, ok := loaded.Accounts["work2"]; ok {
+		t.Error("work2 should not be in quota state (no rate-limit match)")
+	}
+}
+
+// TestQuotaClearCmd_SpecificAccount verifies that doQuotaClearCmd resets
+// a specific account to available.
+func TestQuotaClearCmd_SpecificAccount(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	// Pre-seed with limited state.
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-03T10:00:00Z",
+				ResetsAt:  "2026-04-03T11:00:00Z",
+			},
+			"work2": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-03T10:00:00Z",
+			},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaClearCmd("work1", false, false, quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	// Verify: work1 should be available, work2 should still be limited.
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w1 := loaded.Accounts["work1"]
+	if w1.Status != config.QuotaStatusAvailable {
+		t.Errorf("work1 should be available after clear, got %q", w1.Status)
+	}
+	w2 := loaded.Accounts["work2"]
+	if w2.Status != config.QuotaStatusLimited {
+		t.Errorf("work2 should still be limited, got %q", w2.Status)
+	}
+}
+
+// TestQuotaClearCmd_All verifies that doQuotaClearCmd --all resets all accounts.
+func TestQuotaClearCmd_All(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {Status: config.QuotaStatusLimited, LimitedAt: "2026-04-03T10:00:00Z"},
+			"work2": {Status: config.QuotaStatusCooldown, LimitedAt: "2026-04-03T10:00:00Z"},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaClearCmd("", true, false, quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for handle, as := range loaded.Accounts {
+		if as.Status != config.QuotaStatusAvailable {
+			t.Errorf("account %s should be available after clear --all, got %q", handle, as.Status)
+		}
+	}
+}
+
+// TestQuotaClearCmd_ForceCorrupted verifies that --all --force resets the
+// quota file even when it contains corrupt JSON.
+func TestQuotaClearCmd_ForceCorrupted(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	// Write garbage JSON.
+	if err := os.WriteFile(quotaPath, []byte("{broken json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaClearCmd("", true, true, quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0 for force clear, got %d; stderr: %s", code, stderr.String())
+	}
+
+	// File should now be valid and empty.
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatalf("quota.json should be valid after force clear: %v", err)
+	}
+	if len(loaded.Accounts) != 0 {
+		t.Errorf("expected empty accounts after force clear, got %d", len(loaded.Accounts))
+	}
+}
+
+// TestQuotaStatusCmd_ReadsState verifies that doQuotaStatusCmd reads and
+// displays quota.json content correctly.
+func TestQuotaStatusCmd_ReadsState(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-07T10:00:00Z",
+				ResetsAt:  "2026-04-07T11:00:00Z",
+				LastUsed:  "2026-04-07T09:50:00Z",
+			},
+			"work2": {
+				Status: config.QuotaStatusAvailable,
+			},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaStatusCmd(quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "work1") {
+		t.Error("output should contain work1")
+	}
+	if !strings.Contains(out, "limited") {
+		t.Error("output should contain 'limited'")
+	}
+	if !strings.Contains(out, "work2") {
+		t.Error("output should contain work2")
+	}
+	if !strings.Contains(out, "available") {
+		t.Error("output should contain 'available'")
+	}
+}
+
+// TestQuotaStatusCmd_Empty verifies that doQuotaStatusCmd handles missing
+// quota.json gracefully with a "no quota state" message.
+func TestQuotaStatusCmd_Empty(t *testing.T) {
+	tmp := t.TempDir()
+	quotaPath := filepath.Join(tmp, ".gc", "quota.json")
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaStatusCmd(quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	// Should succeed but show a message about no quota state.
+	combined := stdout.String() + stderr.String()
+	if !strings.Contains(combined, "no quota state") {
+		t.Errorf("expected 'no quota state' message, got stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// TestQuotaClearCmd_AlreadyAvailable verifies that clearing an account
+// that is already available still succeeds (no precondition checks).
+func TestQuotaClearCmd_AlreadyAvailable(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {Status: config.QuotaStatusAvailable},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaClearCmd("work1", false, false, quotaPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0 (no precondition checks), got %d; stderr: %s", code, stderr.String())
+	}
+}
