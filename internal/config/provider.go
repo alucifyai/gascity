@@ -180,6 +180,11 @@ func BuiltinProviders() map[string]ProviderSpec {
 				"auto-edit":    "--permission-mode auto-edit",
 				"full-auto":    "--permission-mode full-auto",
 			},
+			RateLimitPatterns: []string{
+				"rate limit",
+				"too many requests",
+				"usage limit",
+			},
 			OptionsSchema: []ProviderOption{
 				{
 					Key: "permission_mode", Label: "Permission Mode", Type: "select",
@@ -227,6 +232,10 @@ func BuiltinProviders() map[string]ProviderSpec {
 				"auto-edit":    "--full-auto",
 				"unrestricted": "--dangerously-bypass-approvals-and-sandbox",
 			},
+			RateLimitPatterns: []string{
+				"rate limit",
+				"too many requests",
+			},
 			OptionsSchema: []ProviderOption{
 				{
 					Key: "permission_mode", Label: "Approval Policy", Type: "select",
@@ -262,6 +271,11 @@ func BuiltinProviders() map[string]ProviderSpec {
 				"auto-edit":    "--approval-mode auto_edit",
 				"plan":         "--approval-mode plan",
 				"unrestricted": "--approval-mode yolo",
+			},
+			RateLimitPatterns: []string{
+				"resource_exhausted",
+				"quota exceeded",
+				"rate limit",
 			},
 			OptionsSchema: []ProviderOption{
 				{
