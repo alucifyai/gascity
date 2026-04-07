@@ -9,3 +9,11 @@ func TestAccountsFilePath(t *testing.T) {
 		t.Fatalf("AccountsFilePath(%q) = %q, want %q", "myCity", got, want)
 	}
 }
+
+func TestQuotaFilePath(t *testing.T) {
+	got := QuotaFilePath("myCity")
+	want := "myCity/.gc/quota.json"
+	if got != want {
+		t.Fatalf("QuotaFilePath(%q) = %q, want %q", "myCity", got, want)
+	}
+}

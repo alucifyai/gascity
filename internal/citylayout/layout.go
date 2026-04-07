@@ -32,6 +32,8 @@ const (
 	CacheIncludesRoot = ".gc/cache/includes"
 
 	AccountsFile = "accounts.json"
+
+	QuotaFile = "quota.json"
 )
 
 // HasCityConfig reports whether dir contains the canonical city marker file.
@@ -93,6 +95,12 @@ func ClaudeHookFilePath(cityRoot string) string { return filepath.Join(cityRoot,
 // the city runtime root: <cityRoot>/.gc/accounts.json.
 func AccountsFilePath(cityRoot string) string {
 	return filepath.Join(cityRoot, RuntimeRoot, AccountsFile)
+}
+
+// QuotaFilePath returns the path to the quota state file under
+// the city runtime root: <cityRoot>/.gc/quota.json.
+func QuotaFilePath(cityRoot string) string {
+	return filepath.Join(cityRoot, RuntimeRoot, QuotaFile)
 }
 
 // ResolveFormulasDir resolves the city-local formulas directory. If configured
