@@ -72,3 +72,37 @@ stderr 'was the default account'
 # After removing the default, list should show no accounts.
 ! exec gc account list
 stderr 'no accounts registered'
+
+# ── Scenario: Remove account clears quota.json entry ─────────
+# Re-add accounts for this scenario.
+exec gc account add --handle acctA --email a@example.com --config-dir $WORK/cfgdir1
+exec gc account add --handle acctB --email b@example.com --config-dir $WORK/cfgdir2
+
+# Pre-seed quota.json with entries for both accounts.
+cp $WORK/quota-seed.json $WORK/testcity/.gc/quota.json
+
+# Remove acctA — should clear its quota.json entry.
+exec gc account remove acctA
+
+# Verify quota.json no longer contains acctA but still has acctB.
+exec cat $WORK/testcity/.gc/quota.json
+! stdout 'acctA'
+stdout 'acctB'
+
+# ── Scenario: Remove account when quota.json absent ──────────
+# Remove acctB — quota.json may or may not exist, but remove should succeed.
+exec gc account remove acctB
+stdout 'acctB'
+
+-- quota-seed.json --
+{
+  "accounts": {
+    "acctA": {
+      "status": "limited",
+      "limited_at": "2026-04-07T12:00:00Z"
+    },
+    "acctB": {
+      "status": "available"
+    }
+  }
+}

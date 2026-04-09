@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/gastownhall/gascity/internal/account"
@@ -257,6 +260,12 @@ func doAccountRemove(handle string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// Remove the handle's entry from quota.json if it exists (GAP-1 fix).
+	if err := removeQuotaEntry(cityPath, handle); err != nil {
+		fmt.Fprintf(stderr, "gc account remove: warning: %v\n", err) //nolint:errcheck // best-effort stderr
+		// Non-fatal — the account was already removed from accounts.json.
+	}
+
 	fmt.Fprintf(stdout, "account %s removed\n", handle) //nolint:errcheck // best-effort stdout
 	if wasDefault {
 		fmt.Fprintf(stderr, "warning: %s was the default account — run gc account default to set a new one\n", handle) //nolint:errcheck // best-effort stderr
@@ -281,4 +290,64 @@ requires Phase 2 tmux ops.`,
 			return errExit
 		},
 	}
+}
+
+// removeQuotaEntry removes the given handle's entry from quota.json.
+// If quota.json does not exist, this is a no-op (Level 0 compatibility).
+// Uses basic os.ReadFile + encoding/json + atomic write since the formal
+// quota I/O layer is not available on the Phase 1 branch.
+func removeQuotaEntry(cityPath, handle string) error {
+	quotaPath := filepath.Join(cityPath, ".gc", "quota.json")
+
+	raw, err := os.ReadFile(quotaPath)
+	if os.IsNotExist(err) {
+		return nil // No quota.json — nothing to clean up.
+	}
+	if err != nil {
+		return fmt.Errorf("reading quota.json: %w", err)
+	}
+
+	var quota map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &quota); err != nil {
+		return fmt.Errorf("parsing quota.json: %w", err)
+	}
+
+	accountsRaw, ok := quota["accounts"]
+	if !ok {
+		return nil // No "accounts" key — nothing to clean up.
+	}
+
+	var accounts map[string]json.RawMessage
+	if err := json.Unmarshal(accountsRaw, &accounts); err != nil {
+		return fmt.Errorf("parsing quota.json accounts: %w", err)
+	}
+
+	if _, exists := accounts[handle]; !exists {
+		return nil // Handle not in quota.json — nothing to do.
+	}
+
+	delete(accounts, handle)
+
+	// Marshal the updated accounts back into the quota map.
+	updatedAccounts, err := json.Marshal(accounts)
+	if err != nil {
+		return fmt.Errorf("marshaling quota.json accounts: %w", err)
+	}
+	quota["accounts"] = updatedAccounts
+
+	updatedRaw, err := json.MarshalIndent(quota, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling quota.json: %w", err)
+	}
+
+	// Atomic write: temp file + rename.
+	tmpPath := quotaPath + ".tmp"
+	if err := os.WriteFile(tmpPath, updatedRaw, 0o644); err != nil {
+		return fmt.Errorf("writing quota.json temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, quotaPath); err != nil {
+		return fmt.Errorf("renaming quota.json temp file: %w", err)
+	}
+
+	return nil
 }
