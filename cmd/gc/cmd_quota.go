@@ -251,6 +251,13 @@ func doQuotaScanCmd(tmux TmuxOps, providerPatterns map[string][]string, reg acco
 	} else {
 		fmt.Fprintln(stdout, "scan complete: no rate-limited accounts detected") //nolint:errcheck // best-effort stdout
 	}
+
+	// GAP-5 Fix: non-zero exit code for partial scan so callers can
+	// distinguish a clean scan from a degraded one (PRD §Scenario #27).
+	// Results are already persisted above, so the non-zero exit is safe.
+	if len(warnings) > 0 {
+		return 2
+	}
 	return 0
 }
 
