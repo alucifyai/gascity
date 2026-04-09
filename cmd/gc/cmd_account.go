@@ -276,8 +276,8 @@ func doAccountRemove(handle string, stdout, stderr io.Writer) int {
 }
 
 // newAccountStatusCmd creates the "gc account status" command.
-// In Phase 1 this is a placeholder — full implementation requires tmux ops
-// from Phase 2.
+// It reads CLAUDE_CONFIG_DIR from each tmux session's environment and
+// reverse-maps the path to the matching account handle in the registry.
 func newAccountStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -285,13 +285,70 @@ func newAccountStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `Show which account each active session is using.
 
 This command reads CLAUDE_CONFIG_DIR from tmux session environments and
-reverse-maps the path to the matching account handle. Full implementation
-requires Phase 2 tmux ops.`,
+reverse-maps the path to the matching account handle.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			fmt.Fprintln(stderr, "gc account status: not yet implemented (requires Phase 2 tmux ops)") //nolint:errcheck // best-effort stderr
-			return errExit
+			cityPath, err := resolveCity()
+			if err != nil {
+				fmt.Fprintf(stderr, "gc account status: %v\n", err) //nolint:errcheck // best-effort stderr
+				return errExit
+			}
+
+			regPath := citylayout.AccountsFilePath(cityPath)
+			reg, err := account.Load(regPath)
+			if err != nil {
+				fmt.Fprintf(stderr, "gc account status: %v\n", err) //nolint:errcheck // best-effort stderr
+				return errExit
+			}
+
+			ops := DefaultTmuxOps()
+			if doAccountStatus(ops, reg, stdout, stderr) != 0 {
+				return errExit
+			}
+			return nil
 		},
 	}
+}
+
+// doAccountStatus displays per-session account information by reading
+// CLAUDE_CONFIG_DIR from each tmux session and reverse-mapping it to an
+// account handle. Returns 0 on success, 1 on error.
+func doAccountStatus(ops TmuxOps, reg account.Registry, stdout, stderr io.Writer) int {
+	if !ops.IsRunning() {
+		fmt.Fprintln(stderr, "error: tmux is not running. gc account status requires an active tmux server.") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
+	panes, err := ops.ListPanes()
+	if err != nil {
+		fmt.Fprintf(stderr, "gc account status: listing panes: %v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
+	if len(panes) == 0 {
+		fmt.Fprintln(stdout, "no active sessions") //nolint:errcheck // best-effort stdout
+		return 0
+	}
+
+	// Build a reverse map from config dir to account handle.
+	dirToHandle := make(map[string]string, len(reg.Accounts))
+	for _, acct := range reg.Accounts {
+		dirToHandle[acct.ConfigDir] = acct.Handle
+	}
+
+	w := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "SESSION\tACCOUNT\tCONFIG DIR") //nolint:errcheck // best-effort stdout
+	for _, pane := range panes {
+		configDir, _ := ops.ShowEnv(pane.SessionName, "CLAUDE_CONFIG_DIR")
+		handle := "(no account)"
+		if configDir != "" {
+			if h, ok := dirToHandle[configDir]; ok {
+				handle = h
+			}
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", pane.SessionName, handle, configDir) //nolint:errcheck // best-effort stdout
+	}
+	w.Flush() //nolint:errcheck // best-effort flush
+	return 0
 }
 
 // removeQuotaEntry removes the given handle's entry from quota.json using
