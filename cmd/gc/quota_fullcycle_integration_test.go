@@ -58,9 +58,9 @@ func TestScanRotateFullCycle(t *testing.T) {
 	tmuxOps := socketTmuxOps(t, socket)
 
 	// Scan: should detect work1 as rate-limited.
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 	clk := clock.Real{}
-	state, warnings, err := doQuotaScan(tmuxOps, patterns, reg, clk)
+	state, warnings, err := doQuotaScan(tmuxOps, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan failed: %v (warnings: %v)", err, warnings)
 	}

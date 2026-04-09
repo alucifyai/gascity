@@ -146,9 +146,9 @@ func TestDoQuotaScan_DetectsLimited(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -180,9 +180,9 @@ func TestDoQuotaScan_SetsLimitedAt(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: scanTime}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -208,9 +208,9 @@ func TestDoQuotaScan_ParsesResetsAt(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 14, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -239,9 +239,9 @@ func TestDoQuotaScan_NoMatchNotModified(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -282,9 +282,9 @@ func TestDoQuotaScan_PaneClosesMidScan(t *testing.T) {
 	}
 
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, warnings, err := doQuotaScan(ops, patterns, reg, clk)
+	state, warnings, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -326,9 +326,9 @@ func TestDoQuotaScan_MapsByConfigDir(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -360,9 +360,9 @@ func TestDoQuotaScan_EmptyPane(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -388,9 +388,9 @@ func TestDoQuotaScan_LessThan30Lines(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -414,9 +414,9 @@ func TestDoQuotaScan_UnmappedSession(t *testing.T) {
 	}
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	state, warnings, err := doQuotaScan(ops, patterns, reg, clk)
+	state, warnings, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -445,9 +445,9 @@ func TestDoQuotaScan_TmuxNotRunning(t *testing.T) {
 	reg := account.TestRegistry(t)
 	ops := FakeTmuxOps(map[string]*FakePane{}) // empty panes → IsRunning=false
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	_, _, err := doQuotaScan(ops, patterns, reg, clk)
+	_, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err == nil {
 		t.Fatal("expected error when tmux is not running")
 	}
@@ -458,8 +458,8 @@ func TestDoQuotaScan_TmuxNotRunning(t *testing.T) {
 	}
 }
 
-// TestDoQuotaScan_EmptyRateLimitPatterns_Warning verifies that when the
-// patterns list is empty, a warning is emitted.
+// TestDoQuotaScan_EmptyRateLimitPatterns_Warning verifies that when a provider
+// has empty patterns, the exact PRD warning is emitted.
 func TestDoQuotaScan_EmptyRateLimitPatterns_Warning(t *testing.T) {
 	reg := account.TestRegistry(t,
 		account.Account{Handle: "work1", ConfigDir: "/config/work1"},
@@ -473,8 +473,9 @@ func TestDoQuotaScan_EmptyRateLimitPatterns_Warning(t *testing.T) {
 	ops := FakeTmuxOps(panes)
 	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
 
-	// Empty patterns list.
-	state, warnings, err := doQuotaScan(ops, []string{}, reg, clk)
+	// Provider with empty patterns list.
+	providerPatterns := map[string][]string{"claude": {}}
+	state, warnings, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -484,15 +485,16 @@ func TestDoQuotaScan_EmptyRateLimitPatterns_Warning(t *testing.T) {
 		t.Error("expected no match with empty patterns")
 	}
 
-	// A warning about empty patterns should be emitted.
+	// The exact PRD warning should be emitted.
+	wantWarning := "provider claude has no RateLimitPatterns \u2014 skipping pattern scan for its sessions"
 	found := false
 	for _, w := range warnings {
-		if strings.Contains(strings.ToLower(w), "no") && strings.Contains(strings.ToLower(w), "pattern") {
+		if w == wantWarning {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected warning about empty/no patterns, got warnings: %v", warnings)
+		t.Errorf("expected exact warning %q, got warnings: %v", wantWarning, warnings)
 	}
 }

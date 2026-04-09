@@ -182,41 +182,36 @@ in .gc/quota.json regardless of current state.`,
 	return cmd
 }
 
-// loadRateLimitPatterns attempts to load rate-limit patterns from the city
-// config's provider. If anything fails (no config, no provider), returns a
-// sensible default set of patterns.
-func loadRateLimitPatterns(cityPath string, stderr io.Writer) []string {
+// loadRateLimitPatterns attempts to load per-provider rate-limit patterns from
+// the city config. Returns a map of provider name → patterns. If anything fails
+// (no config, no provider), returns a single "default" provider with sensible
+// default patterns.
+func loadRateLimitPatterns(cityPath string, stderr io.Writer) map[string][]string {
 	cfg, err := loadCityConfig(cityPath)
 	if err != nil {
 		// Fall back to default patterns if city config is not loadable.
-		return defaultRateLimitPatterns()
+		return map[string][]string{"default": defaultRateLimitPatterns()}
 	}
 
-	// Collect all rate-limit patterns from all configured providers.
-	var patterns []string
-	for _, spec := range cfg.Providers {
-		patterns = append(patterns, spec.RateLimitPatterns...)
+	result := make(map[string][]string)
+
+	// Collect patterns from configured providers.
+	for name, spec := range cfg.Providers {
+		result[name] = spec.RateLimitPatterns
 	}
 
-	// Also check builtin providers.
-	for _, spec := range config.BuiltinProviders() {
-		patterns = append(patterns, spec.RateLimitPatterns...)
-	}
-
-	if len(patterns) == 0 {
-		return defaultRateLimitPatterns()
-	}
-
-	// Deduplicate patterns.
-	seen := make(map[string]bool)
-	var deduped []string
-	for _, p := range patterns {
-		if !seen[p] {
-			seen[p] = true
-			deduped = append(deduped, p)
+	// Also check builtin providers (only add if not already configured).
+	for name, spec := range config.BuiltinProviders() {
+		if _, exists := result[name]; !exists {
+			result[name] = spec.RateLimitPatterns
 		}
 	}
-	return deduped
+
+	if len(result) == 0 {
+		return map[string][]string{"default": defaultRateLimitPatterns()}
+	}
+
+	return result
 }
 
 // defaultRateLimitPatterns returns a sensible default set of rate-limit
@@ -228,8 +223,8 @@ func defaultRateLimitPatterns() []string {
 // doQuotaScanCmd is the testable implementation of "gc quota scan".
 // It checks tmux availability, runs the scan, persists results to quotaPath,
 // and returns an exit code.
-func doQuotaScanCmd(tmux TmuxOps, patterns []string, reg account.Registry, quotaPath string, clk clock.Clock, stdout, stderr io.Writer) int {
-	state, warnings, err := doQuotaScan(tmux, patterns, reg, clk)
+func doQuotaScanCmd(tmux TmuxOps, providerPatterns map[string][]string, reg account.Registry, quotaPath string, clk clock.Clock, stdout, stderr io.Writer) int {
+	state, warnings, err := doQuotaScan(tmux, providerPatterns, reg, clk)
 	for _, w := range warnings {
 		fmt.Fprintf(stderr, "warning: %s\n", w) //nolint:errcheck // best-effort stderr
 	}

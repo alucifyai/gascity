@@ -39,10 +39,10 @@ func TestDoQuotaScan_PersistsToFile(t *testing.T) {
 	ops := FakeTmuxOps(panes)
 	scanTime := time.Date(2026, 4, 7, 14, 0, 0, 0, time.UTC)
 	clk := &clock.Fake{Time: scanTime}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
 	// Run the scan.
-	state, _, err := doQuotaScan(ops, patterns, reg, clk)
+	state, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}
@@ -106,9 +106,9 @@ func TestScanThenRotate_SeparateCommands(t *testing.T) {
 	ops := FakeTmuxOps(panes)
 	scanTime := time.Date(2026, 4, 7, 14, 0, 0, 0, time.UTC)
 	clk := &clock.Fake{Time: scanTime}
-	patterns := []string{"rate limit"}
+	providerPatterns := map[string][]string{"test": {"rate limit"}}
 
-	scanState, _, err := doQuotaScan(ops, patterns, reg, clk)
+	scanState, _, err := doQuotaScan(ops, providerPatterns, reg, clk)
 	if err != nil {
 		t.Fatalf("doQuotaScan: unexpected error: %v", err)
 	}

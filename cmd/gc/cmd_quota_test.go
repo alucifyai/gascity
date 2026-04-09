@@ -34,7 +34,7 @@ func TestQuotaScanCmd_TmuxNotRunning(t *testing.T) {
 	tmux := FakeTmuxOps(nil) // nil panes → IsRunning returns false
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaScanCmd(tmux, []string{"rate limit"}, reg, quotaPath, clock.Real{}, &stdout, &stderr)
+	code := doQuotaScanCmd(tmux, map[string][]string{"test": {"rate limit"}}, reg, quotaPath, clock.Real{}, &stdout, &stderr)
 
 	if code == 0 {
 		t.Fatal("expected non-zero exit code when tmux is not running")
@@ -188,7 +188,7 @@ func TestQuotaScanCmd_WritesBeforeExit(t *testing.T) {
 	tmux := FakeTmuxOps(panes)
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaScanCmd(tmux, []string{"rate limit"}, reg, quotaPath, clk, &stdout, &stderr)
+	code := doQuotaScanCmd(tmux, map[string][]string{"test": {"rate limit"}}, reg, quotaPath, clk, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())

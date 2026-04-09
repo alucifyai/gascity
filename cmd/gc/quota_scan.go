@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/account"
@@ -46,15 +47,35 @@ func extractResetsAt(output string) string {
 
 // doQuotaScan scans all tmux panes for rate-limit patterns, mapping each pane
 // to an account via the CLAUDE_CONFIG_DIR environment variable.
+// providerPatterns maps provider name → list of rate-limit patterns. Providers
+// with empty pattern lists emit a per-provider warning (exact PRD message).
 // Returns the resulting quota state, a list of warnings, and an error.
-func doQuotaScan(tmux TmuxOps, allPatterns []string, registry account.Registry, clk clock.Clock) (*config.QuotaState, []string, error) {
+func doQuotaScan(tmux TmuxOps, providerPatterns map[string][]string, registry account.Registry, clk clock.Clock) (*config.QuotaState, []string, error) {
 	if !tmux.IsRunning() {
 		return nil, nil, fmt.Errorf("tmux is not running. gc quota commands require an active tmux server.")
 	}
 
 	var warnings []string
 
-	if len(allPatterns) == 0 {
+	// Emit per-provider warnings for empty pattern lists and merge
+	// non-empty patterns into a flat list for matching.
+	var allPatterns []string
+	providerNames := make([]string, 0, len(providerPatterns))
+	for name := range providerPatterns {
+		providerNames = append(providerNames, name)
+	}
+	sort.Strings(providerNames) // deterministic order for warnings
+
+	for _, name := range providerNames {
+		patterns := providerPatterns[name]
+		if len(patterns) == 0 {
+			warnings = append(warnings, fmt.Sprintf("provider %s has no RateLimitPatterns \u2014 skipping pattern scan for its sessions", name))
+		} else {
+			allPatterns = append(allPatterns, patterns...)
+		}
+	}
+
+	if len(allPatterns) == 0 && len(providerPatterns) == 0 {
 		warnings = append(warnings, "no rate-limit patterns configured; no matches will be detected")
 	}
 
@@ -101,7 +122,7 @@ func doQuotaScan(tmux TmuxOps, allPatterns []string, registry account.Registry, 
 			continue
 		}
 
-		// Check for rate-limit patterns.
+		// Check for rate-limit patterns (merged from all non-empty providers).
 		if matchesRateLimitPattern(output, allPatterns) {
 			state.Accounts[handle] = config.QuotaAccountState{
 				Status:    config.QuotaStatusLimited,
