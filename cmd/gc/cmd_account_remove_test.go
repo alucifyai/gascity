@@ -67,7 +67,7 @@ func TestAccountRemove_ClearsQuotaJSON(t *testing.T) {
 
 	// Run doAccountRemove for work1.
 	var stdout, stderr bytes.Buffer
-	code := doAccountRemove("work1", &stdout, &stderr)
+	code := doAccountRemove("work1", FakeTmuxOps(map[string]*FakePane{}), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doAccountRemove returned %d; stderr: %s", code, stderr.String())
 	}
@@ -129,7 +129,7 @@ func TestAccountRemove_NoQuotaFile(t *testing.T) {
 
 	// Run doAccountRemove for work1 — should succeed without error.
 	var stdout, stderr bytes.Buffer
-	code := doAccountRemove("work1", &stdout, &stderr)
+	code := doAccountRemove("work1", FakeTmuxOps(map[string]*FakePane{}), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doAccountRemove returned %d; stderr: %s", code, stderr.String())
 	}
@@ -192,7 +192,7 @@ func TestAccountRemove_ClearsQuotaJSON_MatchesQuotaIOFormat(t *testing.T) {
 
 	// Remove work1.
 	var stdout, stderr bytes.Buffer
-	code := doAccountRemove("work1", &stdout, &stderr)
+	code := doAccountRemove("work1", FakeTmuxOps(map[string]*FakePane{}), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doAccountRemove returned %d; stderr: %s", code, stderr.String())
 	}

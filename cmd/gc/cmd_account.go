@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/gastownhall/gascity/internal/account"
@@ -212,7 +213,8 @@ func newAccountRemoveCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Deregister an account by handle",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			if doAccountRemove(args[0], stdout, stderr) != 0 {
+			ops := DefaultTmuxOps()
+			if doAccountRemove(args[0], ops, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -220,9 +222,12 @@ func newAccountRemoveCmd(stdout, stderr io.Writer) *cobra.Command {
 	}
 }
 
-// doAccountRemove removes an account from the registry. If the removed account
-// is the current default, the default is cleared and a warning is emitted.
-func doAccountRemove(handle string, stdout, stderr io.Writer) int {
+// doAccountRemove removes an account from the registry. If active tmux
+// sessions reference the account being removed, a warning is emitted to
+// stderr (informational only — removal still proceeds). If the removed
+// account is the current default, the default is cleared and a warning
+// is emitted.
+func doAccountRemove(handle string, ops TmuxOps, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc account remove: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -236,17 +241,36 @@ func doAccountRemove(handle string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// Find and remove the account.
+	// Find the account being removed so we can check its config dir.
 	idx := -1
+	var removedConfigDir string
 	for i, acct := range reg.Accounts {
 		if acct.Handle == handle {
 			idx = i
+			removedConfigDir = acct.ConfigDir
 			break
 		}
 	}
 	if idx == -1 {
 		fmt.Fprintf(stderr, "gc account remove: account %q is not registered\n", handle) //nolint:errcheck // best-effort stderr
 		return 1
+	}
+
+	// Warn if any active tmux sessions reference this account (GAP-2 fix).
+	// This is best-effort: if tmux is not running, skip silently.
+	if ops.IsRunning != nil && ops.IsRunning() {
+		if panes, err := ops.ListPanes(); err == nil {
+			var affectedSessions []string
+			for _, pane := range panes {
+				configDir, _ := ops.ShowEnv(pane.SessionName, "CLAUDE_CONFIG_DIR")
+				if configDir == removedConfigDir {
+					affectedSessions = append(affectedSessions, pane.SessionName)
+				}
+			}
+			if len(affectedSessions) > 0 {
+				fmt.Fprintf(stderr, "warning: account %s is in use by active session(s): %s. Proceeding with removal.\n", handle, strings.Join(affectedSessions, ", ")) //nolint:errcheck // best-effort stderr
+			}
+		}
 	}
 
 	reg.Accounts = append(reg.Accounts[:idx], reg.Accounts[idx+1:]...)
