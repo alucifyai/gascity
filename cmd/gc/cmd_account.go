@@ -180,6 +180,11 @@ func doAccountDefault(handle string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if len(reg.Accounts) == 0 {
+		fmt.Fprintln(stderr, "error: no accounts registered. Run gc account add to register at least one account.") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
 	// Verify the handle exists in the registry.
 	found := false
 	for _, acct := range reg.Accounts {
