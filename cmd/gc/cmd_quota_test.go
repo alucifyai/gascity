@@ -256,7 +256,7 @@ func TestQuotaClearCmd_SpecificAccount(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaClearCmd("work1", false, false, quotaPath, &stdout, &stderr)
+	code := doQuotaClearCmd("work1", false, false, quotaPath, "", &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
@@ -285,6 +285,19 @@ func TestQuotaClearCmd_All(t *testing.T) {
 		t.Fatal(err)
 	}
 	quotaPath := filepath.Join(gcDir, "quota.json")
+	accountsPath := filepath.Join(gcDir, "accounts.json")
+
+	// Set up account registry with both work1 and work2 registered.
+	reg := account.Registry{
+		Default: "work1",
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: tmp},
+			{Handle: "work2", ConfigDir: tmp},
+		},
+	}
+	if err := account.Save(accountsPath, reg); err != nil {
+		t.Fatalf("saving accounts.json: %v", err)
+	}
 
 	state := &config.QuotaState{
 		Accounts: map[string]config.QuotaAccountState{
@@ -297,7 +310,7 @@ func TestQuotaClearCmd_All(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaClearCmd("", true, false, quotaPath, &stdout, &stderr)
+	code := doQuotaClearCmd("", true, false, quotaPath, accountsPath, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
@@ -331,7 +344,7 @@ func TestQuotaClearCmd_ForceCorrupted(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaClearCmd("", true, true, quotaPath, &stdout, &stderr)
+	code := doQuotaClearCmd("", true, true, quotaPath, "", &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0 for force clear, got %d; stderr: %s", code, stderr.String())
@@ -436,7 +449,7 @@ func TestQuotaClearCmd_AlreadyAvailable(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doQuotaClearCmd("work1", false, false, quotaPath, &stdout, &stderr)
+	code := doQuotaClearCmd("work1", false, false, quotaPath, "", &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0 (no precondition checks), got %d; stderr: %s", code, stderr.String())
@@ -553,5 +566,89 @@ func TestQuotaRotateCmd_PartialFailure_PersistsState(t *testing.T) {
 	}
 	if !targetFound {
 		t.Error("at least one target account (work3 or work4) should have last_used set in persisted state")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Step 6.6 — gc quota clear --all removes stale/orphaned entries (GAP-10)
+// ---------------------------------------------------------------------------
+
+// TestQuotaClearCmd_AllRemovesOrphaned verifies that doQuotaClearCmd with
+// --all (without --force) removes entries for handles not in the account
+// registry, while keeping registered handles reset to "available".
+func TestQuotaClearCmd_AllRemovesOrphaned(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+	accountsPath := filepath.Join(gcDir, "accounts.json")
+
+	// Set up account registry with only "work1" registered.
+	reg := account.Registry{
+		Default:  "work1",
+		Accounts: []account.Account{{Handle: "work1", ConfigDir: tmp}},
+	}
+	if err := account.Save(accountsPath, reg); err != nil {
+		t.Fatalf("saving accounts.json: %v", err)
+	}
+
+	// Pre-seed quota.json with entries for "work1" (registered) and
+	// "stale1" (NOT registered — orphaned entry).
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-03T10:00:00Z",
+				ResetsAt:  "2026-04-03T11:00:00Z",
+			},
+			"stale1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-03T09:00:00Z",
+			},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	// Pass accountsPath so doQuotaClearCmd can determine which handles are
+	// currently registered. This is the new parameter added by GAP-10.
+	code := doQuotaClearCmd("", true, false, quotaPath, accountsPath, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", code, stderr.String())
+	}
+
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// work1 should still be present, reset to "available".
+	w1, ok := loaded.Accounts["work1"]
+	if !ok {
+		t.Fatal("work1 should still be in quota state after clear --all")
+	}
+	if w1.Status != config.QuotaStatusAvailable {
+		t.Errorf("work1 should be available after clear --all, got %q", w1.Status)
+	}
+	if w1.LimitedAt != "" {
+		t.Errorf("work1 LimitedAt should be cleared, got %q", w1.LimitedAt)
+	}
+	if w1.ResetsAt != "" {
+		t.Errorf("work1 ResetsAt should be cleared, got %q", w1.ResetsAt)
+	}
+
+	// stale1 should NOT be present — it was orphaned and should be removed.
+	if _, ok := loaded.Accounts["stale1"]; ok {
+		t.Error("stale1 should have been removed from quota state (orphaned entry)")
+	}
+
+	// Verify output message.
+	if !strings.Contains(stdout.String(), "all accounts cleared to available") {
+		t.Errorf("expected output to contain 'all accounts cleared to available', got %q", stdout.String())
 	}
 }

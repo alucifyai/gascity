@@ -11,9 +11,10 @@ env GC_DOLT=skip
 exec gc init $WORK/testcity
 cd $WORK/testcity
 
-# Pre-seed .gc/quota.json with limited state.
+# Pre-seed .gc/quota.json with limited state and accounts.json with registered accounts.
 mkdir $WORK/testcity/.gc
 cp $WORK/quota-limited.json $WORK/testcity/.gc/quota.json
+cp $WORK/accounts.json $WORK/testcity/.gc/accounts.json
 
 # ── Scenario: Clear specific account ─────────────────────────
 # Clear work1 → status shows available; work2 still limited.
@@ -70,4 +71,12 @@ exec gc quota clear work1
       "status": "available"
     }
   }
+}
+-- accounts.json --
+{
+  "default": "work1",
+  "accounts": [
+    {"handle": "work1", "config_dir": "/tmp/cfg1"},
+    {"handle": "work2", "config_dir": "/tmp/cfg2"}
+  ]
 }

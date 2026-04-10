@@ -170,7 +170,8 @@ in .gc/quota.json regardless of current state.`,
 			}
 
 			quotaPath := citylayout.QuotaFilePath(cityPath)
-			code := doQuotaClearCmd(handle, all, force, quotaPath, stdout, stderr)
+			accountsPath := citylayout.AccountsFilePath(cityPath)
+			code := doQuotaClearCmd(handle, all, force, quotaPath, accountsPath, stdout, stderr)
 			if code != 0 {
 				return errExit
 			}
@@ -314,7 +315,9 @@ func doQuotaRotateCmd(tmux TmuxOps, reg account.Registry, quotaPath string, clk 
 
 // doQuotaClearCmd is the testable implementation of "gc quota clear".
 // It resets the specified account (or all accounts) to available status.
-func doQuotaClearCmd(handle string, all bool, force bool, quotaPath string, stdout, stderr io.Writer) int {
+// When all is true (without force), it loads the account registry from
+// accountsPath and removes orphaned entries not in the registry (GAP-10).
+func doQuotaClearCmd(handle string, all bool, force bool, quotaPath string, accountsPath string, stdout, stderr io.Writer) int {
 	// Force clear: overwrite with empty state regardless of current content.
 	if all && force {
 		empty := &config.QuotaState{
@@ -335,13 +338,27 @@ func doQuotaClearCmd(handle string, all bool, force bool, quotaPath string, stdo
 	}
 
 	if all {
-		// Clear all accounts to available.
-		for h, as := range state.Accounts {
-			as.Status = config.QuotaStatusAvailable
-			as.LimitedAt = ""
-			as.ResetsAt = ""
-			state.Accounts[h] = as
+		// GAP-10: Load the account registry and build a new map containing
+		// only currently-registered handles set to "available". This naturally
+		// discards orphaned/stale entries not in the registry.
+		reg, regErr := account.Load(accountsPath)
+		if regErr != nil {
+			fmt.Fprintf(stderr, "gc quota clear: %v\n", regErr) //nolint:errcheck // best-effort stderr
+			return 1
 		}
+		registered := make(map[string]bool, len(reg.Accounts))
+		for _, a := range reg.Accounts {
+			registered[a.Handle] = true
+		}
+		newAccounts := make(map[string]config.QuotaAccountState, len(reg.Accounts))
+		for h := range state.Accounts {
+			if registered[h] {
+				newAccounts[h] = config.QuotaAccountState{
+					Status: config.QuotaStatusAvailable,
+				}
+			}
+		}
+		state.Accounts = newAccounts
 	} else {
 		// Clear specific account.
 		as, ok := state.Accounts[handle]
