@@ -29,7 +29,7 @@ func loadQuotaState(path string) (*config.QuotaState, error) {
 
 	var state config.QuotaState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("parsing quota state %s: %w (delete the file to reset)", path, err)
+		return nil, fmt.Errorf("quota.json is malformed — run gc quota clear --all --force to reset: %w", err)
 	}
 	if state.Accounts == nil {
 		state.Accounts = make(map[string]config.QuotaAccountState)

@@ -73,7 +73,8 @@ func TestLoadQuotaState_ValidRoundTrip(t *testing.T) {
 }
 
 // TestLoadQuotaState_CorruptJSON verifies that a malformed JSON file returns
-// an error containing the file path and recovery instructions.
+// an error matching the PRD-specified message: "quota.json is malformed —
+// run gc quota clear --all --force to reset".
 func TestLoadQuotaState_CorruptJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "quota.json")
@@ -87,12 +88,13 @@ func TestLoadQuotaState_CorruptJSON(t *testing.T) {
 		t.Fatal("expected error for corrupt JSON")
 	}
 	errMsg := err.Error()
-	if !strings.Contains(errMsg, path) {
-		t.Errorf("error should contain file path %q, got: %s", path, errMsg)
+	// PRD: error should say "malformed".
+	if !strings.Contains(errMsg, "malformed") {
+		t.Errorf("error should contain 'malformed' per PRD, got: %s", errMsg)
 	}
-	// PRD: error should include recovery instructions.
-	if !strings.Contains(errMsg, "delete") && !strings.Contains(errMsg, "remove") {
-		t.Errorf("error should include recovery instructions (delete/remove), got: %s", errMsg)
+	// PRD: error should include the exact recovery command.
+	if !strings.Contains(errMsg, "gc quota clear --all --force") {
+		t.Errorf("error should contain 'gc quota clear --all --force' per PRD, got: %s", errMsg)
 	}
 }
 
