@@ -89,7 +89,7 @@ func withQuotaLock(quotaPath string, timeout time.Duration, fn func(state *confi
 			break // lock acquired
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("quota state is locked by another rotation in progress. Try again in a moment.")
+			return fmt.Errorf("error: quota state is locked by another rotation in progress. Try again in a moment.")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

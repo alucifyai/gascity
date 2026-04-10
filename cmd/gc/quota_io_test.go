@@ -256,7 +256,8 @@ func TestWithQuotaLock_Timeout(t *testing.T) {
 }
 
 // TestWithQuotaLock_TimeoutMessage verifies the exact PRD error message text
-// for the timeout/busy case.
+// for the timeout/busy case. PRD §Scenario #42 specifies stderr should contain:
+// "error: quota state is locked by another rotation in progress. Try again in a moment."
 func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 	dir := t.TempDir()
 	quotaPath := filepath.Join(dir, "quota.json")
@@ -288,9 +289,10 @@ func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	// PRD exact message: "quota state is locked by another rotation in progress"
-	if !strings.Contains(err.Error(), "quota state is locked by another rotation in progress") {
-		t.Errorf("error should contain PRD message, got: %s", err.Error())
+	// PRD exact message must include "error:" prefix per PRD §Scenario #42.
+	const wantMsg = "error: quota state is locked by another rotation in progress. Try again in a moment."
+	if err.Error() != wantMsg {
+		t.Errorf("lock-timeout error should match PRD exactly:\n  want: %s\n  got:  %s", wantMsg, err.Error())
 	}
 }
 
