@@ -652,3 +652,53 @@ func TestQuotaClearCmd_AllRemovesOrphaned(t *testing.T) {
 		t.Errorf("expected output to contain 'all accounts cleared to available', got %q", stdout.String())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GAP-11 fix: CMD-level test for rotate with corrupted quota.json
+// ---------------------------------------------------------------------------
+
+// TestQuotaRotateCmd_CorruptedQuotaJSON verifies that doQuotaRotateCmd returns
+// a non-zero exit code and prints the PRD-specified error message to stderr
+// when quota.json contains malformed JSON. The error should guide the user to
+// run "gc quota clear --all --force" to recover.
+func TestQuotaRotateCmd_CorruptedQuotaJSON(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	// Write malformed content to quota.json.
+	if err := os.WriteFile(quotaPath, []byte("{not valid json!!!"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+		},
+	}
+
+	// tmux is running so we reach the withQuotaLock/loadQuotaState path.
+	tmux := FakeTmuxOps(map[string]*FakePane{
+		"work1": {Output: "$ idle"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaRotateCmd(tmux, reg, quotaPath, clock.Real{}, &stdout, &stderr)
+
+	if code == 0 {
+		t.Fatal("expected non-zero exit code for corrupted quota.json")
+	}
+
+	errMsg := stderr.String()
+	// PRD (GAP-7): error should contain "malformed".
+	if !strings.Contains(errMsg, "malformed") {
+		t.Errorf("stderr should contain 'malformed' per PRD, got: %s", errMsg)
+	}
+	// PRD (GAP-7): error should include the exact recovery command.
+	if !strings.Contains(errMsg, "gc quota clear --all --force") {
+		t.Errorf("stderr should contain 'gc quota clear --all --force' per PRD, got: %s", errMsg)
+	}
+}
