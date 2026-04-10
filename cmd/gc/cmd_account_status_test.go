@@ -130,3 +130,38 @@ func TestAccountStatusCmd_NoSessions(t *testing.T) {
 		t.Errorf("output should contain 'no active sessions'; got:\n%s", out)
 	}
 }
+
+// TestAccountStatusCmd_EmptyRegistry verifies that doAccountStatus returns
+// exit code 1 and prompts the operator to run "gc account add" when the
+// registry has no accounts registered. The guard should fire before any
+// tmux inspection occurs.
+//
+// PRD Scenario #41: When gc account status is run with no accounts, the
+// command exits with a non-zero status and prompts the operator to run
+// gc account add.
+//
+// Audit GAP-8b fix.
+func TestAccountStatusCmd_EmptyRegistry(t *testing.T) {
+	// Empty registry — no accounts.
+	reg := account.Registry{}
+
+	// Provide tmux ops that would succeed — but they should never be reached
+	// because the empty-registry guard fires first.
+	ops := FakeTmuxOps(map[string]*FakePane{
+		"session-a": {Env: map[string]string{"CLAUDE_CONFIG_DIR": "/config/work1"}},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := doAccountStatus(ops, reg, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("doAccountStatus exit code = %d, want 1", code)
+	}
+
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "no accounts registered") {
+		t.Errorf("stderr should contain %q, got: %s", "no accounts registered", errOut)
+	}
+	if !strings.Contains(errOut, "gc account add") {
+		t.Errorf("stderr should contain %q, got: %s", "gc account add", errOut)
+	}
+}

@@ -337,6 +337,11 @@ reverse-maps the path to the matching account handle.`,
 // CLAUDE_CONFIG_DIR from each tmux session and reverse-mapping it to an
 // account handle. Returns 0 on success, 1 on error.
 func doAccountStatus(ops TmuxOps, reg account.Registry, stdout, stderr io.Writer) int {
+	if len(reg.Accounts) == 0 {
+		fmt.Fprintln(stderr, "error: no accounts registered. Run gc account add to register at least one account.") //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
 	if !ops.IsRunning() {
 		fmt.Fprintln(stderr, "error: tmux is not running. gc account status requires an active tmux server.") //nolint:errcheck // best-effort stderr
 		return 1
