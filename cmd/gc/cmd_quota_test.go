@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -439,5 +440,118 @@ func TestQuotaClearCmd_AlreadyAvailable(t *testing.T) {
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0 (no precondition checks), got %d; stderr: %s", code, stderr.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Step 6.2 — Partial Rotation Failure State Persistence (GAP-6 Fix)
+// ---------------------------------------------------------------------------
+
+// TestQuotaRotateCmd_PartialFailure_PersistsState verifies that when
+// doQuotaRotateCmd encounters a partial rotation failure (some pane respawns
+// succeed, others fail), the successfully rotated sessions are still persisted
+// to quota.json on disk. This is the critical GAP-6 bug: the withQuotaLock
+// callback returns the partial error, causing withQuotaLock to skip
+// saveQuotaState.
+//
+// PRD requirement: "successfully rotated sessions are reflected in
+// .gc/quota.json" and "the failed session retains status=limited in
+// quota.json" during partial failures.
+func TestQuotaRotateCmd_PartialFailure_PersistsState(t *testing.T) {
+	tmp := t.TempDir()
+	gcDir := filepath.Join(tmp, ".gc")
+	if err := os.MkdirAll(gcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	quotaPath := filepath.Join(gcDir, "quota.json")
+
+	// Pre-seed quota state: work1 and work2 are both limited.
+	state := &config.QuotaState{
+		Accounts: map[string]config.QuotaAccountState{
+			"work1": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-07T10:00:00Z",
+			},
+			"work2": {
+				Status:    config.QuotaStatusLimited,
+				LimitedAt: "2026-04-07T10:05:00Z",
+			},
+		},
+	}
+	if err := saveQuotaState(quotaPath, state); err != nil {
+		t.Fatal(err)
+	}
+
+	// Registry: work1, work2 (limited), and work3, work4 (available targets).
+	reg := account.Registry{
+		Accounts: []account.Account{
+			{Handle: "work1", ConfigDir: "/tmp/cfg1"},
+			{Handle: "work2", ConfigDir: "/tmp/cfg2"},
+			{Handle: "work3", ConfigDir: "/tmp/cfg3"},
+			{Handle: "work4", ConfigDir: "/tmp/cfg4"},
+		},
+	}
+
+	clk := &clock.Fake{Time: time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)}
+
+	// FakeTmuxOps: two limited sessions. sess-work1 respawn succeeds,
+	// sess-work2 respawn fails (simulating partial failure).
+	panes := map[string]*FakePane{
+		"sess-work1": {
+			Output:     "rate limit exceeded",
+			Env:        map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/cfg1"},
+			RespawnErr: nil, // respawn succeeds
+		},
+		"sess-work2": {
+			Output:     "rate limit exceeded",
+			Env:        map[string]string{"CLAUDE_CONFIG_DIR": "/tmp/cfg2"},
+			RespawnErr: fmt.Errorf("fake respawn error: pane not found"),
+		},
+	}
+	tmux := FakeTmuxOps(panes)
+
+	var stdout, stderr bytes.Buffer
+	code := doQuotaRotateCmd(tmux, reg, quotaPath, clk, &stdout, &stderr)
+
+	// The command should return non-zero because of partial failure.
+	if code == 0 {
+		t.Fatal("expected non-zero exit code for partial rotation failure")
+	}
+
+	// CRITICAL CHECK: Read quota.json from disk and verify state was persisted
+	// despite the partial failure.
+	loaded, err := loadQuotaState(quotaPath)
+	if err != nil {
+		t.Fatalf("loading persisted quota state after partial failure: %v", err)
+	}
+
+	// work1's session was successfully rotated → work1 should be available.
+	w1, ok := loaded.Accounts["work1"]
+	if !ok {
+		t.Fatal("work1 should be in persisted quota state after partial rotation")
+	}
+	if w1.Status != config.QuotaStatusAvailable {
+		t.Errorf("work1 should be available after successful rotation, got %q", w1.Status)
+	}
+
+	// work2's session failed → work2 should retain limited status.
+	w2, ok := loaded.Accounts["work2"]
+	if !ok {
+		t.Fatal("work2 should be in persisted quota state after partial rotation")
+	}
+	if w2.Status != config.QuotaStatusLimited {
+		t.Errorf("work2 should retain limited status after failed respawn, got %q", w2.Status)
+	}
+
+	// The target account (work3 or work4) should have last_used set.
+	var targetFound bool
+	for _, handle := range []string{"work3", "work4"} {
+		if as, ok := loaded.Accounts[handle]; ok && as.LastUsed != "" {
+			targetFound = true
+			break
+		}
+	}
+	if !targetFound {
+		t.Error("at least one target account (work3 or work4) should have last_used set in persisted state")
 	}
 }

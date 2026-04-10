@@ -272,17 +272,24 @@ func doQuotaRotateCmd(tmux TmuxOps, reg account.Registry, quotaPath string, clk 
 	}
 
 	// Use withQuotaLock to ensure exclusive access and TOCTOU prevention.
+	// GAP-6 fix: capture the partial rotation error in a closure variable
+	// and return nil from the callback so withQuotaLock always persists
+	// the state. This ensures successfully rotated sessions are saved to
+	// quota.json even when some pane respawns fail.
 	var rotateWarnings []string
+	var rotateErr error
 	err := withQuotaLock(quotaPath, 5*time.Second, func(state *config.QuotaState) error {
-		newState, warnings, rotateErr := doQuotaRotate(tmux, state, reg, clk)
+		newState, warnings, rErr := doQuotaRotate(tmux, state, reg, clk)
 		rotateWarnings = warnings
+		rotateErr = rErr
 
 		// Copy the new state back into the locked state for persistence.
 		if newState != nil {
 			state.Accounts = newState.Accounts
 		}
 
-		return rotateErr
+		// Return nil so withQuotaLock persists state even on partial failure.
+		return nil
 	})
 
 	for _, w := range rotateWarnings {
@@ -290,7 +297,14 @@ func doQuotaRotateCmd(tmux TmuxOps, reg account.Registry, quotaPath string, clk 
 	}
 
 	if err != nil {
+		// Lock/IO error — state was not persisted.
 		fmt.Fprintf(stderr, "%v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
+	}
+
+	if rotateErr != nil {
+		// Partial failure — state IS persisted, but rotation had errors.
+		fmt.Fprintf(stderr, "%v\n", rotateErr) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
