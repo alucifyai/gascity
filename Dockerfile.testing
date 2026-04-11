@@ -1,0 +1,106 @@
+# Gas City Testing Dockerfile
+#
+# Multi-stage build for running the complete test suite in a container.
+# Includes all dependencies needed for unit tests, integration tests, and Docker tests.
+#
+# Build:
+#   docker build -f Dockerfile.test -t gc-test .
+#
+# Run tests:
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock gc-test make check-all
+#
+# Run specific tests:
+#   docker run --rm gc-test make test
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock gc-test make test-docker
+
+FROM ubuntu:24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV GO_VERSION=1.25.0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    procps \
+    lsof \
+    sudo \
+    tmux \
+    util-linux \
+    build-essential \
+    libicu74 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go (detect architecture for cross-platform builds)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://golang.org/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xzf -
+
+ENV PATH=/usr/local/go/bin:/home/gctest/go/bin:$PATH
+ENV GOPATH=/home/gctest/go
+ENV GOROOT=/usr/local/go
+
+# Install Node.js for Claude Code CLI
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Install Dolt (pinned version from deps.env)
+ARG DOLT_VERSION=1.85.0
+RUN curl -fsSL https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/install.sh | bash
+
+# Install bd (beads CLI, pinned version from deps.env)
+ARG BD_VERSION=1.0.0
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://github.com/steveyegge/beads/releases/download/v${BD_VERSION}/beads_${BD_VERSION}_linux_${ARCH}.tar.gz" \
+      -o /tmp/beads.tar.gz && \
+    tar -xzf /tmp/beads.tar.gz -C /usr/local/bin bd && \
+    chmod +x /usr/local/bin/bd && \
+    rm /tmp/beads.tar.gz
+
+# Install Docker CLI for Docker-in-Docker testing
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && apt-get install -y --no-install-recommends docker-ce-cli && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for running tests
+RUN useradd -m -s /bin/bash gctest && \
+    echo "gctest ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/gctest && \
+    chmod 0440 /etc/sudoers.d/gctest
+
+USER gctest
+WORKDIR /workspace
+
+# Configure git and dolt identity for the gctest user.
+# Required by gc-beads-bd's ensure_dolt_identity() which falls back to git config.
+RUN git config --global user.name "Gas City Test" && \
+    git config --global user.email "gctest@gascity.local" && \
+    dolt config --global --add user.name "Gas City Test" && \
+    dolt config --global --add user.email "gctest@gascity.local"
+
+RUN mkdir -p /home/gctest/.claude
+# COPY --chown=gctest:gctest claude.credentials.json /home/gctest/.claude/.credentials.json
+
+# Copy source code
+COPY --chown=gctest:gctest . .
+
+# Set up Go module cache and build dependencies
+RUN go mod download
+
+# Install golangci-lint (required by make check)
+RUN make install-tools
+
+# Install Docker Buildx plugin (required by make check-all)
+RUN make install-buildx
+
+# Build the gc binary
+RUN make build
+
+# Default command: run the full test suite
+CMD ["make", "check-all"]
