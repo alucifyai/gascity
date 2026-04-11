@@ -260,10 +260,11 @@ func TestFakeTmuxOps_IsRunning(t *testing.T) {
 	}
 }
 
-// TestDefaultTmuxOps_AllFieldsSet verifies that DefaultTmuxOps() returns a
-// TmuxOps struct with all function fields set (non-nil).
+// TestDefaultTmuxOps_AllFieldsSet verifies that DefaultTmuxOps("") returns a
+// TmuxOps struct with all function fields set (non-nil) when using the default
+// tmux server (empty socket name).
 func TestDefaultTmuxOps_AllFieldsSet(t *testing.T) {
-	ops := DefaultTmuxOps()
+	ops := DefaultTmuxOps("")
 
 	v := reflect.ValueOf(ops)
 	ty := v.Type()
@@ -271,7 +272,25 @@ func TestDefaultTmuxOps_AllFieldsSet(t *testing.T) {
 		field := ty.Field(i)
 		fv := v.Field(i)
 		if fv.Kind() == reflect.Func && fv.IsNil() {
-			t.Errorf("DefaultTmuxOps().%s is nil — all function fields must be set", field.Name)
+			t.Errorf("DefaultTmuxOps(\"\").%s is nil — all function fields must be set", field.Name)
+		}
+	}
+}
+
+// TestDefaultTmuxOps_WithSocket_AllFieldsSet verifies that DefaultTmuxOps
+// with a non-empty socket name returns a TmuxOps struct with all function
+// fields set (non-nil). This validates per-city socket isolation support
+// introduced for main's per-city tmux socket pattern.
+func TestDefaultTmuxOps_WithSocket_AllFieldsSet(t *testing.T) {
+	ops := DefaultTmuxOps("test-city-socket")
+
+	v := reflect.ValueOf(ops)
+	ty := v.Type()
+	for i := 0; i < ty.NumField(); i++ {
+		field := ty.Field(i)
+		fv := v.Field(i)
+		if fv.Kind() == reflect.Func && fv.IsNil() {
+			t.Errorf("DefaultTmuxOps(\"test-city-socket\").%s is nil — all function fields must be set", field.Name)
 		}
 	}
 }
