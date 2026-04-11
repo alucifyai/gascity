@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -213,7 +214,12 @@ func newAccountRemoveCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Deregister an account by handle",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ops := DefaultTmuxOps()
+			cityPath, err := resolveCity()
+			if err != nil {
+				fmt.Fprintf(stderr, "gc account remove: %v\n", err) //nolint:errcheck // best-effort stderr
+				return errExit
+			}
+			ops := DefaultTmuxOps(filepath.Base(cityPath))
 			if doAccountRemove(args[0], ops, stdout, stderr) != 0 {
 				return errExit
 			}
@@ -324,7 +330,7 @@ reverse-maps the path to the matching account handle.`,
 				return errExit
 			}
 
-			ops := DefaultTmuxOps()
+			ops := DefaultTmuxOps(filepath.Base(cityPath))
 			if doAccountStatus(ops, reg, stdout, stderr) != 0 {
 				return errExit
 			}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"text/tabwriter"
 	"time"
@@ -70,7 +71,7 @@ Results are written to .gc/quota.json.`,
 			patterns := loadRateLimitPatterns(cityPath, stderr)
 
 			quotaPath := citylayout.QuotaFilePath(cityPath)
-			tmux := DefaultTmuxOps()
+			tmux := DefaultTmuxOps(filepath.Base(cityPath))
 			clk := clock.Real{}
 
 			code := doQuotaScanCmd(tmux, patterns, reg, quotaPath, clk, stdout, stderr)
@@ -129,7 +130,7 @@ least-recently-used available account by respawning the tmux pane.`,
 			}
 
 			quotaPath := citylayout.QuotaFilePath(cityPath)
-			tmux := DefaultTmuxOps()
+			tmux := DefaultTmuxOps(filepath.Base(cityPath))
 			clk := clock.Real{}
 
 			code := doQuotaRotateCmd(tmux, reg, quotaPath, clk, stdout, stderr)

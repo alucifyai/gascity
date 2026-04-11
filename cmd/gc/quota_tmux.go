@@ -38,9 +38,18 @@ type TmuxOps struct {
 }
 
 // DefaultTmuxOps returns a TmuxOps that delegates to real tmux commands
-// via the internal/runtime/tmux package.
-func DefaultTmuxOps() TmuxOps {
-	tm := tmux.NewTmux()
+// via the internal/runtime/tmux package. When socketName is non-empty,
+// the tmux instance uses per-city socket isolation (-L <socket>).
+// When socketName is empty, the default tmux server is used.
+func DefaultTmuxOps(socketName string) TmuxOps {
+	var tm *tmux.Tmux
+	if socketName != "" {
+		cfg := tmux.DefaultConfig()
+		cfg.SocketName = socketName
+		tm = tmux.NewTmuxWithConfig(cfg)
+	} else {
+		tm = tmux.NewTmux()
+	}
 	return TmuxOps{
 		CapturePane: func(sessionName string, lines int) (string, error) {
 			return tm.CapturePane(sessionName, lines)
