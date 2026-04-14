@@ -269,8 +269,10 @@ func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 
 	started := make(chan struct{})
 	release := make(chan struct{})
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		_ = withQuotaLock(quotaPath, 5*time.Second, func(_ *config.QuotaState) error {
 			close(started)
 			<-release
@@ -285,6 +287,7 @@ func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 	})
 
 	close(release)
+	<-done // wait for goroutine to fully release the lock and finish file I/O
 
 	if err == nil {
 		t.Fatal("expected timeout error")
