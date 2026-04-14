@@ -14,7 +14,7 @@ import (
 // Accounts with no last_used entry (never used) are prioritized over all
 // used accounts. Ties are broken alphabetically by handle for determinism.
 // Returns an error if available is empty.
-func selectLRUAccount(available []account.Account, state *config.QuotaState, clk clock.Clock) (account.Account, error) {
+func selectLRUAccount(available []account.Account, state *config.QuotaState, _ clock.Clock) (account.Account, error) {
 	if len(available) == 0 {
 		return account.Account{}, fmt.Errorf("no available accounts for LRU selection")
 	}
@@ -67,7 +67,7 @@ func doQuotaRotate(tmux TmuxOps, state *config.QuotaState, reg account.Registry,
 
 	// Check for empty registry.
 	if len(reg.Accounts) == 0 {
-		return nil, warnings, fmt.Errorf("error: no accounts registered. Run gc account add to register at least one account.")
+		return nil, warnings, fmt.Errorf("error: no accounts registered. Run gc account add to register at least one account.") //nolint:revive,staticcheck // PRD-specified user-facing message
 	}
 
 	// Build handle→account and configDir→handle lookups.
@@ -134,7 +134,7 @@ func doQuotaRotate(tmux TmuxOps, state *config.QuotaState, reg account.Registry,
 
 	// All accounts limited (no available for rotation)?
 	if len(availableAccounts) == 0 {
-		return nil, warnings, fmt.Errorf("error: all registered accounts are rate-limited; no rotation possible.")
+		return nil, warnings, fmt.Errorf("error: all registered accounts are rate-limited; no rotation possible.") //nolint:revive,staticcheck // PRD-specified user-facing message
 	}
 
 	// Sort limited sessions by name for deterministic processing order.

@@ -188,7 +188,7 @@ in .gc/quota.json regardless of current state.`,
 // the city config. Returns a map of provider name → patterns. If anything fails
 // (no config, no provider), returns a single "default" provider with sensible
 // default patterns.
-func loadRateLimitPatterns(cityPath string, stderr io.Writer) map[string][]string {
+func loadRateLimitPatterns(cityPath string, _ io.Writer) map[string][]string {
 	cfg, err := loadCityConfig(cityPath)
 	if err != nil {
 		// Fall back to default patterns if city config is not loadable.

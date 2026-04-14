@@ -87,7 +87,7 @@ func TestValidateNewAccount_UnreadableDir(t *testing.T) {
 	if err := os.Mkdir(unreadable, 0o000); err != nil {
 		t.Fatalf("creating unreadable dir: %v", err)
 	}
-	t.Cleanup(func() { os.Chmod(unreadable, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
 
 	reg := Registry{}
 	err := ValidateNewAccount(reg, Account{

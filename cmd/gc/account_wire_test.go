@@ -63,7 +63,7 @@ func TestResolveAccountEnv_PreFlightFail_NotReadable(t *testing.T) {
 	if err := os.Mkdir(unreadable, 0o000); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(unreadable, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
 
 	reg := account.TestRegistry(t, account.Account{
 		Handle:    "work1",

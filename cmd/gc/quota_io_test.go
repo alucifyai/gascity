@@ -224,7 +224,7 @@ func TestWithQuotaLock_Timeout(t *testing.T) {
 	// Goroutine 1: holds lock until told to release.
 	go func() {
 		defer close(done)
-		err := withQuotaLock(quotaPath, 5*time.Second, func(state *config.QuotaState) error {
+		err := withQuotaLock(quotaPath, 5*time.Second, func(_ *config.QuotaState) error {
 			close(started)
 			<-release // hold lock until released
 			return nil
@@ -238,7 +238,7 @@ func TestWithQuotaLock_Timeout(t *testing.T) {
 	<-started // wait for goroutine 1 to hold lock
 
 	// Goroutine 2 (main): try to acquire with very short timeout → should fail.
-	err := withQuotaLock(quotaPath, 100*time.Millisecond, func(state *config.QuotaState) error {
+	err := withQuotaLock(quotaPath, 100*time.Millisecond, func(_ *config.QuotaState) error {
 		t.Error("callback should not be called when lock times out")
 		return nil
 	})
@@ -271,7 +271,7 @@ func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 	release := make(chan struct{})
 
 	go func() {
-		_ = withQuotaLock(quotaPath, 5*time.Second, func(state *config.QuotaState) error {
+		_ = withQuotaLock(quotaPath, 5*time.Second, func(_ *config.QuotaState) error {
 			close(started)
 			<-release
 			return nil
@@ -280,7 +280,7 @@ func TestWithQuotaLock_TimeoutMessage(t *testing.T) {
 
 	<-started
 
-	err := withQuotaLock(quotaPath, 100*time.Millisecond, func(state *config.QuotaState) error {
+	err := withQuotaLock(quotaPath, 100*time.Millisecond, func(_ *config.QuotaState) error {
 		return nil
 	})
 

@@ -19,7 +19,7 @@ type FakePane struct {
 // the quota rotation subsystem's tmux interactions.
 func FakeTmuxOps(panes map[string]*FakePane) TmuxOps {
 	return TmuxOps{
-		CapturePane: func(sessionName string, lines int) (string, error) {
+		CapturePane: func(sessionName string, _ int) (string, error) {
 			p, ok := panes[sessionName]
 			if !ok {
 				return "", fmt.Errorf("fake: unknown session %q", sessionName)

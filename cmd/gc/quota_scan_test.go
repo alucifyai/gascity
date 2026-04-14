@@ -67,7 +67,7 @@ func TestMatchesRateLimitPattern_EmptyPatterns(t *testing.T) {
 
 // TestMatchesRateLimitPattern_InvalidRegex verifies that an invalid regex
 // pattern is skipped without crashing (the function should not panic).
-func TestMatchesRateLimitPattern_InvalidRegex(t *testing.T) {
+func TestMatchesRateLimitPattern_InvalidRegex(_ *testing.T) {
 	output := "Error: rate limit exceeded"
 	// "[invalid" is an invalid regex — unclosed bracket.
 	patterns := []string{"[invalid"}

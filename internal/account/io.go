@@ -56,17 +56,17 @@ func Save(path string, reg Registry) error {
 	tmpName := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		tmp.Close()        //nolint:errcheck // best-effort cleanup
+		os.Remove(tmpName) //nolint:errcheck // best-effort cleanup
 		return fmt.Errorf("writing temp file for account registry %q: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		os.Remove(tmpName) //nolint:errcheck // best-effort cleanup
 		return fmt.Errorf("closing temp file for account registry %q: %w", path, err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		os.Remove(tmpName) //nolint:errcheck // best-effort cleanup
 		return fmt.Errorf("renaming temp file for account registry %q: %w", path, err)
 	}
 	return nil

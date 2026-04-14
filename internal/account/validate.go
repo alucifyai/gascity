@@ -76,7 +76,7 @@ func ValidateNewAccount(reg Registry, acct Account) error {
 	if err != nil {
 		return fmt.Errorf("config_dir %q is not readable: %w", acct.ConfigDir, err)
 	}
-	f.Close()
+	f.Close() //nolint:errcheck // best-effort readability check; Open succeeded
 
 	return nil
 }

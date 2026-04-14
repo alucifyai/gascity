@@ -52,7 +52,7 @@ func extractResetsAt(output string) string {
 // Returns the resulting quota state, a list of warnings, and an error.
 func doQuotaScan(tmux TmuxOps, providerPatterns map[string][]string, registry account.Registry, clk clock.Clock) (*config.QuotaState, []string, error) {
 	if !tmux.IsRunning() {
-		return nil, nil, fmt.Errorf("tmux is not running. gc quota commands require an active tmux server.")
+		return nil, nil, fmt.Errorf("tmux is not running. gc quota commands require an active tmux server.") //nolint:revive,staticcheck // PRD-specified user-facing message
 	}
 
 	var warnings []string

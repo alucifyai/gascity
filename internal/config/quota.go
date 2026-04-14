@@ -1,5 +1,4 @@
 // Package config — quota types for per-account quota state tracking.
-
 package config
 
 // QuotaAccountStatus is a distinct named type for quota-specific account states.

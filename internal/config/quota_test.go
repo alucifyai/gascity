@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-func TestQuotaAccountStatus_IsDistinctType(t *testing.T) {
+func TestQuotaAccountStatus_IsDistinctType(_ *testing.T) {
 	// QuotaAccountStatus must be a distinct named type, not assignable
 	// from/to other string-based status types in the codebase.
 	// This is a compile-time assertion: if QuotaAccountStatus were a plain
 	// string alias or the same type as another status, these assignments
 	// would compile. By verifying the type is used correctly here, we
 	// confirm it's distinct.
-	var s QuotaAccountStatus = QuotaStatusAvailable
+	s := QuotaStatusAvailable
 	_ = s
 
 	// Verify it's a string underneath (for JSON marshaling) but a named type.
-	var str string = string(s)
+	str := string(s)
 	_ = str
 
 	// If QuotaAccountStatus were just "string", this test would still compile,
