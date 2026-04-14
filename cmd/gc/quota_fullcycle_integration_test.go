@@ -183,4 +183,3 @@ func socketTmuxOps(t *testing.T, socket string) TmuxOps {
 		},
 	}
 }
-
